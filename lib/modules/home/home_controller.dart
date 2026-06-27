@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/constant.dart';
+import 'package:simple_recorder/app/event_bus.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/db_service.dart';
@@ -13,11 +17,23 @@ class HomeController extends GetxController {
 
   final Map<String, Rx<int>> liveStatusMap = {};
   final Map<String, Rx<String>> debugLogMap = {};
+  StreamSubscription<dynamic>? _followSubscription;
 
   @override
   void onInit() {
     super.onInit();
     loadFollowList();
+    // 监听收藏变化事件，从搜索页返回时即时刷新
+    _followSubscription =
+        EventBus.instance.listen(Constant.kUpdateFollow, (_) {
+      loadFollowList();
+    });
+  }
+
+  @override
+  void onClose() {
+    _followSubscription?.cancel();
+    super.onClose();
   }
 
   void loadFollowList() {
@@ -54,11 +70,16 @@ class HomeController extends GetxController {
     var session = RecordingManager.instance.getSession(user.id);
     if (session != null && session.isRecording.value) {
       await RecordingManager.instance.stopRecording(user.id);
+      // 停止录音后重新加载列表
+      loadFollowList();
       return;
     }
 
     var site = Sites.getSite(user.siteId);
-    if (site == null) return;
+    if (site == null) {
+      Get.snackbar("录制失败", "不支持的平台: ${user.siteId}");
+      return;
+    }
 
     var newSession = RecordingSession(
       taskId: user.id,
@@ -70,12 +91,18 @@ class HomeController extends GetxController {
     try {
       var detail = await site.liveSite.getRoomDetail(roomId: user.roomId);
       var qualites = await site.liveSite.getPlayQualites(detail: detail);
-      if (qualites.isEmpty) return;
+      if (qualites.isEmpty) {
+        Get.snackbar("录制失败", "未获取到可用的清晰度选项");
+        return;
+      }
       var playUrl = await site.liveSite.getPlayUrls(
         detail: detail,
         quality: qualites.first,
       );
-      if (playUrl.urls.isEmpty) return;
+      if (playUrl.urls.isEmpty) {
+        Get.snackbar("录制失败", "未获取到可用的播放地址");
+        return;
+      }
 
       newSession.configure(
         getPlayUrl: () => playUrl.urls.first,
@@ -97,6 +124,7 @@ class HomeController extends GetxController {
       await RecordingManager.instance.startRecording(newSession);
     } catch (e) {
       Log.logPrint("开始录制失败: $e");
+      Get.snackbar("录制失败", e.toString());
     }
   }
 
@@ -125,6 +153,8 @@ class HomeController extends GetxController {
       await RecordingManager.instance.stopRecording(user.id);
       DBService.instance.deleteFollow(user.id);
       followList.remove(user);
+      // 通知搜索页更新收藏状态
+      EventBus.instance.emit(Constant.kUpdateFollow, user.id);
     }
   }
 

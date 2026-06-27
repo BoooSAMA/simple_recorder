@@ -1,111 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/sites.dart';
-import 'package:simple_recorder/models/db/follow_user.dart';
+import 'package:simple_recorder/modules/search/search_controller.dart';
 import 'package:simple_recorder/services/db_service.dart';
-import 'package:simple_live_core/simple_live_core.dart';
 
-class SearchController extends GetxController {
-  final searchResults = RxList<LiveRoomItem>();
-  final searchAnchorResults = RxList<LiveAnchorItem>();
-  final isSearching = false.obs;
-  final hasMore = true.obs;
-  final selectedSiteId = Sites.supportSites.first.id.obs;
-  int _page = 1;
-
-  void changeSite(String siteId) {
-    selectedSiteId.value = siteId;
-  }
-
-  Future<void> search(String keyword, {bool loadMore = false}) async {
-    if (keyword.isEmpty) return;
-
-    if (!loadMore) {
-      _page = 1;
-      searchResults.clear();
-      searchAnchorResults.clear();
-    }
-
-    isSearching.value = true;
-
-    var site = Sites.getSite(selectedSiteId.value);
-    if (site == null) {
-      isSearching.value = false;
-      return;
-    }
-
-    try {
-      var result = await site.liveSite.searchRooms(keyword, page: _page);
-
-      // 猫耳FM没有搜索API，尝试直接按房间号查询
-      if (result.items.isEmpty && site.id == Constant.kMaoerfm) {
-        var roomId = keyword.trim();
-        if (RegExp(r'^\d+$').hasMatch(roomId)) {
-          try {
-            var detail = await site.liveSite.getRoomDetail(roomId: roomId);
-            if (detail.roomId.isNotEmpty) {
-              result = LiveSearchRoomResult(
-                hasMore: false,
-                items: [
-                  LiveRoomItem(
-                    roomId: detail.roomId,
-                    title: detail.title,
-                    cover: detail.cover,
-                    userName: detail.userName,
-                    online: detail.online,
-                  ),
-                ],
-              );
-            }
-          } catch (_) {
-            // 房间号查询失败，保持空结果
-          }
-        }
-      }
-
-      if (loadMore) {
-        searchResults.addAll(result.items);
-      } else {
-        searchResults.value = result.items;
-      }
-      hasMore.value = result.hasMore;
-      _page++;
-    } catch (e) {
-      Get.snackbar("搜索失败", e.toString());
-    } finally {
-      isSearching.value = false;
-    }
-  }
-
-  Future<void> followRoom(LiveRoomItem item) async {
-    var id = "${selectedSiteId.value}_${item.roomId}";
-    if (DBService.instance.getFollowExist(id)) {
-      Get.snackbar("提示", "已收藏该直播间");
-      return;
-    }
-    DBService.instance.addFollow(
-      FollowUser(
-        id: id,
-        roomId: item.roomId,
-        siteId: selectedSiteId.value,
-        userName: item.userName,
-        face: item.cover,
-        addTime: DateTime.now(),
-      ),
-    );
-    Get.snackbar("成功", "已收藏「${item.userName}」");
-  }
-}
-
-class SearchPage extends StatelessWidget {
+class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    var controller = Get.put(SearchController());
-    var searchCtl = TextEditingController();
+  State<SearchPage> createState() => _SearchPageState();
+}
 
+class _SearchPageState extends State<SearchPage> {
+  late final LiveSearchController controller;
+  late final TextEditingController searchCtl;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.put(LiveSearchController());
+    searchCtl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    searchCtl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("搜索直播间"),
@@ -133,7 +57,8 @@ class SearchPage extends StatelessWidget {
               ],
             ),
           ),
-          Padding(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: Sites.supportSites.map((site) {
@@ -197,12 +122,20 @@ class SearchPage extends StatelessWidget {
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ListTile(
-                        leading: CircleAvatar(
-                          radius: 20,
-                          backgroundImage: item.cover.isNotEmpty
-                              ? NetworkImage(item.cover)
-                              : null,
-                          child: item.cover.isEmpty ? Text(item.userName[0]) : null,
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            width: 60,
+                            height: 60,
+                            child: item.cover.isNotEmpty
+                                ? Image.network(item.cover, fit: BoxFit.cover)
+                                : Center(
+                                    child: Text(
+                                      item.userName.isNotEmpty ? item.userName[0] : "?",
+                                      style: const TextStyle(fontSize: 20),
+                                    ),
+                                  ),
+                          ),
                         ),
                         title: Text(item.userName),
                         subtitle: Text(

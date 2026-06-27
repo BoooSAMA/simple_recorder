@@ -115,18 +115,22 @@ class _RoomCard extends StatelessWidget {
                       color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
-                CircleAvatar(
-                  radius: 20,
-                  backgroundImage: user.face.isNotEmpty
-                      ? NetworkImage(user.face)
-                      : null,
-                  child: user.face.isEmpty
-                      ? Text(
-                          user.userName.isNotEmpty
-                              ? user.userName[0]
-                              : "?",
-                        )
-                      : null,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: user.face.isNotEmpty
+                        ? Image.network(user.face, fit: BoxFit.cover)
+                        : Center(
+                            child: Text(
+                              user.userName.isNotEmpty
+                                  ? user.userName[0]
+                                  : "?",
+                              style: const TextStyle(fontSize: 20),
+                            ),
+                          ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -164,35 +168,15 @@ class _RoomCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (isRecording)
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            value: null,
-                          ),
-                        ),
-                        Icon(
-                          Icons.stop,
-                          size: 16,
-                          color: Colors.red,
-                        ),
-                      ],
-                    ),
-                  ),
                 IconButton(
                   icon: Icon(
-                    isRecording ? Icons.stop_circle_outlined : Icons.fiber_manual_record,
+                    isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
                     color: isRecording ? Colors.red : (liveStatus == 2 ? Colors.green : Colors.grey),
+                    size: 28,
                   ),
-                  onPressed: () => controller.toggleRecording(user),
+                  onPressed: isRecording || liveStatus == 2
+                      ? () => controller.toggleRecording(user)
+                      : null,
                   tooltip: isRecording ? "停止录制" : "开始录制",
                 ),
                 PopupMenuButton<String>(

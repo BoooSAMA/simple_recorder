@@ -4,7 +4,7 @@ import 'package:simple_recorder/modules/search/search_page.dart';
 import 'package:simple_recorder/modules/settings/settings_page.dart';
 import 'package:simple_recorder/modules/settings/appstyle_setting_page.dart';
 import 'package:simple_recorder/modules/settings/audio_settings_page.dart';
-import 'package:simple_recorder/modules/other/debug_log_page.dart';
+import 'package:simple_recorder/modules/debug_log/debug_log_page.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 
 class AppPages {
