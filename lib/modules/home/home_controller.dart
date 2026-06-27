@@ -23,7 +23,7 @@ class HomeController extends GetxController {
   final loadProgress = 0.0.obs;
 
   /// 筛选模式: 0=全部(分组) 1=直播中 2=未开播
-  final filterMode = 0.obs;
+  final filterMode = 1.obs;
 
   /// 筛选模式 1/2 时的过滤结果（不修改 followList）
   final filteredList = <FollowUser>[].obs;
@@ -196,6 +196,13 @@ class HomeController extends GetxController {
     _sortByPin(notLive);
     liveList.value = live;
     notLiveList.value = notLive;
+
+    // 如果当前在筛选模式，同步更新 filteredList
+    if (filterMode.value == 1) {
+      filteredList.value = live;
+    } else if (filterMode.value == 2) {
+      filteredList.value = notLive;
+    }
   }
 
   /// 切换录制状态（开始录制）
