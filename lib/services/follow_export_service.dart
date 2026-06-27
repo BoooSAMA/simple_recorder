@@ -111,11 +111,14 @@ class FollowExportService {
       if (confirm != true) return;
 
       int importedCount = 0;
-      for (var json in followsJson) {
+      int failedCount = 0;
+      int skippedCount = 0;
+
+      for (var i = 0; i < followsJson.length; i++) {
+        final map = followsJson[i] as Map<String, dynamic>;
         try {
           // bililive 导出的 addTime 格式为 "2026-06-16 00:36:43.380"（空格分隔），
           // DateTime.parse() 需要 ISO 8601 格式（T 分隔），这里做兼容转换
-          final map = json as Map<String, dynamic>;
           if (map['addTime'] is String) {
             final t = map['addTime'] as String;
             if (!t.contains('T') && t.contains(' ')) {
@@ -126,13 +129,18 @@ class FollowExportService {
           if (!DBService.instance.getFollowExist(follow.id)) {
             await DBService.instance.addFollow(follow);
             importedCount++;
+            Log.d('✓ 导入: ${follow.userName}');
+          } else {
+            skippedCount++;
+            Log.d('⊙ 已存在: ${follow.userName}');
           }
         } catch (e) {
-          Log.w('导入关注项失败: $e');
+          failedCount++;
+          Log.e('✗ 失败 #$i: ${map['id']} → $e');
         }
       }
 
-      Log.d('导入完成，成功 $importedCount / ${followsJson.length} 条');
+      Log.w('导入统计 → 成功:$importedCount  跳过:$skippedCount  失败:$failedCount');
 
       EventBus.instance.emit(Constant.kUpdateFollow, null);
 

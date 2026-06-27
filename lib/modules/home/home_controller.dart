@@ -11,6 +11,7 @@ import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/db_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_recorder/services/recording_service.dart';
+import 'package:simple_recorder/services/follow_export_service.dart';
 
 class HomeController extends GetxController {
   final followList = <FollowUser>[].obs;
@@ -22,7 +23,7 @@ class HomeController extends GetxController {
   final loadProgress = 0.0.obs;
 
   /// 筛选模式: 0=全部(分组) 1=直播中 2=未开播
-  final filterMode = 1.obs;
+  final filterMode = 0.obs;
 
   StreamSubscription<dynamic>? _followSubscription;
   bool _initialCheckDone = false;
@@ -340,5 +341,15 @@ class HomeController extends GetxController {
       followList.remove(user);
       EventBus.instance.emit(Constant.kUpdateFollow, user.id);
     }
+  }
+
+  /// 导出关注数据
+  void exportData() {
+    FollowExportService.exportFollowData();
+  }
+
+  /// 导入关注数据
+  void importData() {
+    FollowExportService.importFollowData();
   }
 }

@@ -51,6 +51,39 @@ class HomePage extends StatelessWidget {
           );
         }),
         actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'export':
+                  controller.exportData();
+                  break;
+                case 'import':
+                  controller.importData();
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  leading: Icon(Icons.upload_file),
+                  title: Text('导出关注数据'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.file_download),
+                  title: Text('导入关注数据'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Get.toNamed(RoutePath.kSettings),
