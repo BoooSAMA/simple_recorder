@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
@@ -214,7 +216,7 @@ class HomePage extends StatelessWidget {
       crossAxisCount: 2,
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
-      childAspectRatio: 0.85,
+      childAspectRatio: 1.06,
     );
 
     return RefreshIndicator(
@@ -331,11 +333,11 @@ class HomePage extends StatelessWidget {
           crossAxisCount: 2,
           mainAxisSpacing: 8,
           crossAxisSpacing: 8,
-          childAspectRatio: 0.85,
+          childAspectRatio: 1.06,
         ),
-        itemCount: controller.followList.length,
+        itemCount: controller.filteredList.length,
         itemBuilder: (context, index) {
-          var user = controller.followList[index];
+          var user = controller.filteredList[index];
           return _RoomCard(
             key: ValueKey(user.id),
             user: user,
@@ -346,7 +348,7 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class _RoomCard extends StatelessWidget {
+class _RoomCard extends StatefulWidget {
   final FollowUser user;
 
   const _RoomCard({
@@ -355,14 +357,46 @@ class _RoomCard extends StatelessWidget {
   });
 
   @override
+  State<_RoomCard> createState() => _RoomCardState();
+}
+
+class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixin {
+  late final AnimationController _enterController;
+
+  @override
+  void initState() {
+    super.initState();
+    _enterController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    _enterController.forward();
+  }
+
+  @override
+  void dispose() {
+    _enterController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    var user = widget.user;
     var controller = Get.find<HomeController>();
     var liveStatus = user.liveStatus.value;
 
     var theme = Theme.of(context);
     final isPinned = AppSettingsController.instance.isFollowPinned(user.id);
 
-    return Container(
+    final fade = CurvedAnimation(parent: _enterController, curve: Curves.easeOutCubic);
+    final slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _enterController, curve: Curves.easeOutCubic));
+
+    return FadeTransition(
+      opacity: fade,
+      child: SlideTransition(
+        position: slide,
+        child: Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         border: isPinned
@@ -377,11 +411,10 @@ class _RoomCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 第一行：头像 + 信息（名字在上，状态+pin 在下）
+              // 第一行：头像 + 开播状态 + pin + 更多
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // 头像
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: SizedBox(
@@ -399,80 +432,78 @@ class _RoomCard extends StatelessWidget {
                             ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  // 名字 + 状态/pin
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user.userName,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                   const SizedBox(width: 4),
+                   const Spacer(),
+                   // 开播状态灯
+                   _StatusIndicator(liveStatus: liveStatus),
+                   const Spacer(),
+                   // Pin 按钮
+                   GestureDetector(
+                     onTap: () async {
+                       await AppSettingsController.instance
+                           .toggleFollowPin(user.id);
+                       controller.filterData();
+                     },
+                     child: SizedBox(
+                       width: 26,
+                       height: 26,
+                       child: Icon(
+                         isPinned
+                             ? Icons.push_pin
+                             : Icons.push_pin_outlined,
+                         size: 18,
+                         color: isPinned ? Colors.amber : Colors.grey,
+                       ),
+                     ),
+                   ),
+                   const Spacer(),
+                   // 更多菜单
+                   GestureDetector(
+                     onTapDown: (details) {
+                      final offset = details.globalPosition;
+                      showMenu<String>(
+                        context: context,
+                        position: RelativeRect.fromLTRB(
+                          offset.dx, offset.dy, offset.dx, offset.dy,
                         ),
-                        const SizedBox(height: 4),
-                        // 开播状态 + pin
-                        Row(
-                          children: [
-                            _StatusIndicator(liveStatus: liveStatus),
-                            const Spacer(),
-                            IconButton(
-                              onPressed: () async {
-                                await AppSettingsController.instance
-                                    .toggleFollowPin(user.id);
-                                controller.filterData();
-                              },
-                              icon: Icon(
-                                isPinned
-                                    ? Icons.push_pin
-                                    : Icons.push_pin_outlined,
-                                size: 16,
-                                color: isPinned ? Colors.amber : Colors.grey,
-                              ),
-                              tooltip: isPinned ? '取消置顶' : '置顶',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 24,
-                                minHeight: 24,
-                              ),
+                        items: [
+                          const PopupMenuItem(
+                            value: "delete",
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline, size: 18),
+                                SizedBox(width: 8),
+                                Text("取消关注"),
+                              ],
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 更多菜单
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == "delete") {
-                        controller.removeFollow(user);
-                      }
+                          ),
+                        ],
+                      ).then((value) {
+                        if (value == "delete") {
+                          controller.removeFollow(user);
+                        }
+                      });
                     },
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 24,
-                      minHeight: 24,
-                    ),
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: "delete",
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete_outline, size: 18),
-                            SizedBox(width: 8),
-                            Text("取消关注"),
-                          ],
-                        ),
-                      ),
-                    ],
+                     child: const SizedBox(
+                       width: 23,
+                       height: 23,
+                       child: Icon(Icons.more_vert, size: 20),
+                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
+              // 主播名称（头像下方，独立一行）
+              Text(
+                user.userName,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
               // 录制按钮 — 全宽独立行
               _CompactRecordingControls(
                 liveStatus: liveStatus,
@@ -485,6 +516,8 @@ class _RoomCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
+    ),
     );
   }
 }
@@ -512,73 +545,119 @@ class _CompactRecordingControls extends StatelessWidget {
       var theme = Theme.of(context);
 
       if (isRecording) {
-        return Column(
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeOutCubic,
+          builder: (context, value, child) => Opacity(
+            opacity: value,
+            child: Transform.scale(
+              scale: 0.92 + 0.08 * value,
+              child: child,
+            ),
+          ),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Icon(Icons.fiber_manual_record, size: 10, color: Colors.red),
-                const SizedBox(width: 4),
-                Text(
-                  "$duration · $fileSize",
-                  style: theme.textTheme.labelSmall?.copyWith(color: Colors.red),
+            // 录制时长 + 文件大小（毛玻璃底板）
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(25),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.fiber_manual_record, size: 10, color: Colors.red),
+                      const SizedBox(width: 4),
+                      Text(
+                        duration,
+                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.red),
+                      ),
+                      Text(
+                        " · ",
+                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.white38),
+                      ),
+                      Flexible(
+                        child: Text(
+                          fileSize,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
+                // 停止按钮（涟漪反馈）
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () => controller.stopRecording(user),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.stop, color: Colors.white, size: 16),
-                          SizedBox(width: 2),
-                          Text(
-                            "停止",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
+                  child: Material(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(5),
+                    child: InkWell(
+                      onTap: () => controller.stopRecording(user),
+                      borderRadius: BorderRadius.circular(5),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.stop, color: Colors.white, size: 16),
+                            SizedBox(width: 2),
+                            Text(
+                              "停止",
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 6),
+                // 取消按钮（涟漪反馈）
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () => controller.cancelRecording(user),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 5),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.red, width: 1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.close, color: Colors.red, size: 16),
-                          SizedBox(width: 2),
-                          Text(
-                            "取消",
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(5),
+                    child: InkWell(
+                      onTap: () => controller.cancelRecording(user),
+                      borderRadius: BorderRadius.circular(5),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.red, width: 1),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.close, color: Colors.red, size: 16),
+                            SizedBox(width: 2),
+                            Text(
+                              "取消",
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -586,6 +665,7 @@ class _CompactRecordingControls extends StatelessWidget {
               ],
             ),
           ],
+        ),
         );
       }
 
@@ -593,36 +673,41 @@ class _CompactRecordingControls extends StatelessWidget {
       final isUnknown = liveStatus == 0;
       final buttonColor = isLive ? theme.colorScheme.primary : Colors.grey;
 
-      return GestureDetector(
-        onTap: () => controller.toggleRecording(user),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(5),
-            border: Border.all(
-              color: buttonColor.withValues(alpha: 0.5),
-              width: 1,
+      return Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(5),
+        child: InkWell(
+          onTap: () => controller.toggleRecording(user),
+          borderRadius: BorderRadius.circular(5),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: buttonColor.withValues(alpha: 0.5),
+                width: 1,
+              ),
             ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isLive ? Icons.mic : Icons.mic_none,
-                size: 16,
-                color: isUnknown ? Colors.grey : buttonColor,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                isUnknown ? "检查中" : (isLive ? "录制" : "未开播"),
-                style: TextStyle(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isLive ? Icons.mic : Icons.mic_none,
+                  size: 16,
                   color: isUnknown ? Colors.grey : buttonColor,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
                 ),
-              ),
-            ],
+                const SizedBox(width: 4),
+                Text(
+                  isUnknown ? "检查中" : (isLive ? "录制" : "未开播"),
+                  style: TextStyle(
+                    color: isUnknown ? Colors.grey : buttonColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -723,38 +808,19 @@ class _StatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color color;
-    String text;
     switch (liveStatus) {
-      case 0:
-        color = Colors.grey;
-        text = "未知";
-      case 1:
-        color = Colors.grey;
-        text = "未开播";
-      case 2:
-        color = Colors.green;
-        text = "直播中";
-      default:
-        color = Colors.grey;
-        text = "未知";
+      case 0: color = Colors.grey; break;
+      case 1: color = Colors.grey; break;
+      case 2: color = Colors.green; break;
+      default: color = Colors.grey;
     }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
-        ),
-      ],
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+      ),
     );
   }
 }

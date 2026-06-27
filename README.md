@@ -11,20 +11,22 @@
 - **[Simple Live (dart_simple_live)](https://github.com/xiaoyaocz/dart_simple_live)** — 提供多平台直播搜索与房间信息获取能力
 - **[Bililive](https://github.com/BoooSAMA/bililive)** — 提供基于 FFmpeg 的直播间音频录制核心功能
 
-初期目标：取 Simple Live 的多平台访问功能，取 Bililive 的录音功能，打造一个纯粹的多平台直播音频录制工具。
-
 ## 功能特性
 
 - **多平台搜索** — 支持 Bilibili、抖音、斗鱼、虎牙四大平台直播间搜索
-- **纯音频录制** — 仅录制音频，移除视频直播观看功能
+- **纯音频录制** — 仅录制音频，无视频直播观看功能
 - **并行录制** — 基于 FFmpeg 同时录制多个直播间，互不干扰
-- **收藏管理** — 收藏常用直播间，随时查看直播状态
-- **直播状态监测** — 自动检测已收藏主播的开播状态
-- **断线自动重连** — 录制中断自动重试（最多3次），保障录制完整性
+- **双列卡片 UI** — 2 列 Grid 紧凑布局，头像 + 开播状态灯 + 录制控制
+- **分组筛选** — 直播中 / 未开播分组展示，支持置顶
+- **直播状态监测** — 高并发自动检测（8 路并行），渐进式 UI 更新
+- **断线自动重连** — 录制中断自动重试（最多 3 次），保障录制完整性
+- **录制进度实时显示** — 毛玻璃底板上显示录制时长（红）和文件大小（白）
 - **按主播名分类** — 自动按主播名创建文件夹存储音频文件
-- **Debug 日志** — 每个录制卡片显示可收起的调试日志
+- **录制完成详情** — 录制结束后显示文件名、文件大小、保存路径
+- **卡片淡入动画** — 列表加载时卡片带微上浮淡入效果
+- **涟漪按钮反馈** — 录制/停止/取消按钮带 Material 涟漪动画
 - **后台运行** — 支持后台持续录制
-- **简化报错** — 精简友好的错误提示
+- **Debug 日志** — 每个录制卡片显示可收起的调试日志
 
 ## 初期主要功能清单
 
@@ -38,6 +40,13 @@
 - [x] 保证后台运行
 - [x] 简化报错提示
 - [x] 按主播名自动创建文件夹保存
+- [x] 2 列卡片 Grid UI 布局
+- [x] 分组筛选（直播中/未开播/全部）
+- [x] 置顶收藏直播间
+- [x] 录制完成详情提示（文件名、大小、路径）
+- [x] 毛玻璃录制进度显示
+- [x] 卡片淡入动画 + 按钮涟漪反馈
+- [x] 状态加载性能优化（8 路并发、无闪烁更新）
 - [x] README 中声明仅限自用，禁止分发
 
 ## 项目结构
@@ -47,30 +56,35 @@ simple_recorder/
 ├── lib/
 │   ├── main.dart                         # 入口
 │   ├── app/
-│   │   ├── app_style.dart                # 主题样式
+│   │   ├── app_style.dart                # Material3 light/dark 主题
 │   │   ├── constant.dart                 # 常量定义
 │   │   ├── log.dart                      # 日志工具
-│   │   ├── sites.dart                    # 多平台站点管理
+│   │   ├── sites.dart                    # 多平台站点注册
+│   │   ├── event_bus.dart                # 跨模块事件总线
 │   │   └── controller/
-│   │       └── app_settings_controller.dart
+│   │       └── app_settings_controller.dart  # 全局设置
 │   ├── models/
 │   │   └── db/
-│   │       ├── follow_user.dart          # 收藏用户模型
+│   │       ├── follow_user.dart          # 收藏用户模型 (Hive)
 │   │       └── recording_task.dart       # 录制任务模型
 │   ├── services/
-│   │   ├── db_service.dart               # 数据库服务
-│   │   ├── local_storage_service.dart    # 本地存储
-│   │   ├── recording_service.dart        # 单房间录制服务
-│   │   └── recording_manager.dart        # 并行录制管理器
+│   │   ├── db_service.dart               # Hive CRUD
+│   │   ├── local_storage_service.dart    # Hive settings box
+│   │   ├── recording_service.dart        # RecordingSession: FFmpeg 录音核心
+│   │   ├── recording_manager.dart        # 并行录制管理 (RxList)
+│   │   └── follow_export_service.dart    # 数据导入导出
 │   ├── modules/
-│   │   ├── home/                         # 首页（录制列表）
+│   │   ├── home/                         # 首页（卡片列表 + 录制控制）
 │   │   ├── search/                       # 多平台搜索
-│   │   └── settings/                     # 设置页
+│   │   └── settings/                     # 设置页（存储路径/外观/数据）
 │   ├── routes/
 │   │   ├── app_pages.dart
 │   │   └── route_path.dart
 │   └── widgets/
-├── project_init_features.md              # 项目初始设计文档
+│       └── settings/                     # 设置页组件 (card, switch, action)
+├── android/app/src/main/kotlin/.../MainActivity.kt  # Android 打开文件夹
+├── .sisyphus/
+│   └── flutter-overflow-guide.md          # Flutter 溢出调试指南
 └── README.md
 ```
 
@@ -92,6 +106,9 @@ dart run build_runner build --delete-conflicting-outputs
 
 # 运行
 flutter run
+
+# 静态分析
+flutter analyze
 ```
 
 ### 平台支持
@@ -110,6 +127,14 @@ flutter run
 - `ffmpeg_kit_flutter` — 基于 FFmpeg 的音频录制
 - `hive` — 本地数据持久化
 - `get` — 状态管理与路由
+
+## UI 约定
+
+本项目在 2 列 Grid 紧凑布局中有一系列 UI 约定，详见 `AGENTS.md`：
+
+- **禁止 Material 包装组件** — 在紧凑空间中用 `GestureDetector` + `SizedBox` 替代 `PopupMenuButton`、`IconButton` 等
+- **GetX 响应式模式** — 卡片状态通过 `Obx(() { final _ = RecordingManager.instance.activeSessions.length; })` 触发
+- **防溢出清单** — 先计算可用宽度，列出固定元素，确保剩余空间足够
 
 ## 免责声明
 

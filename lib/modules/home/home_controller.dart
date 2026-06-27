@@ -25,6 +25,9 @@ class HomeController extends GetxController {
   /// 筛选模式: 0=全部(分组) 1=直播中 2=未开播
   final filterMode = 0.obs;
 
+  /// 筛选模式 1/2 时的过滤结果（不修改 followList）
+  final filteredList = <FollowUser>[].obs;
+
   StreamSubscription<dynamic>? _followSubscription;
   bool _initialCheckDone = false;
 
@@ -79,7 +82,6 @@ class HomeController extends GetxController {
 
   /// 根据筛选模式 + 置顶规则重排列表
   void filterData() {
-    List<FollowUser> source;
     switch (filterMode.value) {
       case 0: // 全部：分组展示
         final live = <FollowUser>[];
@@ -95,20 +97,20 @@ class HomeController extends GetxController {
         _sortByPin(notLive);
         liveList.value = live;
         notLiveList.value = notLive;
-        return;
+        break;
       case 1:
-        source = followList.where((u) => u.liveStatus.value == 2).toList();
+        // 直播中：发布到 filteredList，不修改 followList
+        final source = followList.where((u) => u.liveStatus.value == 2).toList();
+        _sortByPin(source);
+        filteredList.value = source;
         break;
       case 2:
-        source = followList
-            .where((u) => u.liveStatus.value != 2)
-            .toList();
+        // 未开播：发布到 filteredList，不修改 followList
+        final source = followList.where((u) => u.liveStatus.value != 2).toList();
+        _sortByPin(source);
+        filteredList.value = source;
         break;
-      default:
-        source = followList.toList();
     }
-    _sortByPin(source);
-    followList.value = source;
   }
 
   void _sortByPin(List<FollowUser> items) {
