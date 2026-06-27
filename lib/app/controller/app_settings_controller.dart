@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_recorder/services/local_storage_service.dart';
 
@@ -13,10 +16,14 @@ class AppSettingsController extends GetxController {
   final autoReconnect = true.obs;
   final autoSaveToFolder = true.obs;
 
+  /// 置顶的直播间 ID 集合
+  var pinnedFollowIds = <String>{}.obs;
+
   @override
   void onInit() {
     super.onInit();
     loadSettings();
+    loadPinnedFollowIds();
   }
 
   void loadSettings() {
@@ -38,8 +45,45 @@ class AppSettingsController extends GetxController {
         .getValue("auto_save_to_folder", true);
   }
 
+  /// 加载置顶直播间 ID 列表
+  void loadPinnedFollowIds() {
+    final raw = LocalStorageService.instance
+        .getValue("pinned_follow_ids", "");
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        // ignore: invalid_use_of_protected_member
+        pinnedFollowIds.value = decoded.cast<String>().toSet();
+      } catch (_) {
+        // ignore: invalid_use_of_protected_member
+        pinnedFollowIds.value = {};
+      }
+    }
+  }
+
+  /// 保存置顶直播间 ID 列表
+  Future<void> savePinnedFollowIds() async {
+    final encoded = jsonEncode(pinnedFollowIds.toList());
+    await LocalStorageService.instance
+        .setValue("pinned_follow_ids", encoded);
+  }
+
+  /// 判断直播间是否被置顶
+  bool isFollowPinned(String id) => pinnedFollowIds.contains(id);
+
+  /// 切换置顶状态
+  Future<void> toggleFollowPin(String id) async {
+    if (pinnedFollowIds.contains(id)) {
+      pinnedFollowIds.remove(id);
+    } else {
+      pinnedFollowIds.add(id);
+    }
+    await savePinnedFollowIds();
+  }
+
   void setThemeMode(int mode) {
     themeMode.value = mode;
+    Get.changeThemeMode(ThemeMode.values[mode]);
     LocalStorageService.instance.setValue("theme_mode", mode);
   }
 

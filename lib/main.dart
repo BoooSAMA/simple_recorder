@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:simple_recorder/app/app_style.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
@@ -29,6 +30,9 @@ void main() async {
   Get.put(AppSettingsController());
   Get.put(RecordingManager());
 
+  // 新用户首启：请求通知权限和存储权限
+  _requestPermissions();
+
   initCoreLog();
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -38,6 +42,16 @@ void main() async {
   ));
 
   runApp(const MyApp());
+}
+
+void _requestPermissions() {
+  // 不阻塞启动，fire-and-forget
+  Future(() async {
+    // 请求管理所有文件权限 (Android 11+ 必需)
+    if (await Permission.manageExternalStorage.isDenied) {
+      await Permission.manageExternalStorage.request();
+    }
+  });
 }
 
 void initCoreLog() {

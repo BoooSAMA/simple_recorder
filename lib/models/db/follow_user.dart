@@ -36,9 +36,8 @@ class FollowUser {
   @HiveField(6)
   String tag;
 
-  @HiveField(7)
-  bool isPinned = false;
-
+  /// 直播状态
+  /// 0=未知(加载中) 1=未开播 2=直播中
   Rx<int> liveStatus = 0.obs;
   String? liveStartTime;
 
@@ -50,7 +49,7 @@ class FollowUser {
         face: json['face'],
         addTime: DateTime.parse(json['addTime']),
         tag: json["tag"] ?? "全部",
-      )..isPinned = json['isPinned'] ?? false;
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -60,6 +59,5 @@ class FollowUser {
         'face': face,
         'addTime': addTime.toString(),
         'tag': tag,
-        'isPinned': isPinned,
       };
 }

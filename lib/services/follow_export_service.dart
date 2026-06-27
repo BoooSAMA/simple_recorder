@@ -6,6 +6,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/constant.dart';
+import 'package:simple_recorder/app/controller/app_settings_controller.dart';
+import 'package:simple_recorder/app/event_bus.dart';
+import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/db_service.dart';
 
@@ -18,8 +22,8 @@ class FollowExportService {
         return;
       }
 
-      final pinnedIds =
-          follows.where((f) => f.isPinned).map((f) => f.id).toList();
+      final pinnedIds = AppSettingsController
+          .instance.pinnedFollowIds.toList();
 
       final data = {
         'type': 'simple_recorder_follow',
@@ -107,20 +111,34 @@ class FollowExportService {
       if (confirm != true) return;
 
       int importedCount = 0;
-      for (final json in followsJson) {
+      for (var json in followsJson) {
         try {
-          final follow =
-              FollowUser.fromJson(json as Map<String, dynamic>);
+          // bililive 导出的 addTime 格式为 "2026-06-16 00:36:43.380"（空格分隔），
+          // DateTime.parse() 需要 ISO 8601 格式（T 分隔），这里做兼容转换
+          final map = json as Map<String, dynamic>;
+          if (map['addTime'] is String) {
+            final t = map['addTime'] as String;
+            if (!t.contains('T') && t.contains(' ')) {
+              map['addTime'] = t.replaceFirst(' ', 'T');
+            }
+          }
+          final follow = FollowUser.fromJson(map);
           if (!DBService.instance.getFollowExist(follow.id)) {
             await DBService.instance.addFollow(follow);
             importedCount++;
           }
-        } catch (_) {}
+        } catch (e) {
+          Log.w('导入关注项失败: $e');
+        }
       }
+
+      Log.d('导入完成，成功 $importedCount / ${followsJson.length} 条');
+
+      EventBus.instance.emit(Constant.kUpdateFollow, null);
 
       if (pinnedIds.isNotEmpty) {
         for (final id in pinnedIds) {
-          await DBService.instance.pinFollow(id);
+          AppSettingsController.instance.toggleFollowPin(id);
         }
       }
 

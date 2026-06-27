@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_recorder/app/sites.dart';
 import 'package:simple_recorder/modules/search/search_controller.dart';
-import 'package:simple_recorder/services/db_service.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -115,9 +114,7 @@ class _SearchPageState extends State<SearchPage> {
                   itemCount: controller.searchResults.length,
                   itemBuilder: (context, index) {
                     var item = controller.searchResults[index];
-                    var isFollowed = DBService.instance.getFollowExist(
-                      "${controller.selectedSiteId.value}_${item.roomId}",
-                    );
+                    var id = "${controller.selectedSiteId.value}_${item.roomId}";
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -127,14 +124,18 @@ class _SearchPageState extends State<SearchPage> {
                           child: SizedBox(
                             width: 60,
                             height: 60,
-                            child: item.cover.isNotEmpty
-                                ? Image.network(item.cover, fit: BoxFit.cover)
-                                : Center(
-                                    child: Text(
-                                      item.userName.isNotEmpty ? item.userName[0] : "?",
-                                      style: const TextStyle(fontSize: 20),
-                                    ),
-                                  ),
+                            child: Obx(() {
+                              var avatarUrl = controller.avatarMap[item.roomId] ?? item.cover;
+                              if (avatarUrl.isNotEmpty) {
+                                return Image.network(avatarUrl, fit: BoxFit.cover);
+                              }
+                              return Center(
+                                child: Text(
+                                  item.userName.isNotEmpty ? item.userName[0] : "?",
+                                  style: const TextStyle(fontSize: 20),
+                                ),
+                              );
+                            }),
                           ),
                         ),
                         title: Text(item.userName),
@@ -143,15 +144,18 @@ class _SearchPageState extends State<SearchPage> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        trailing: IconButton(
-                          icon: Icon(
-                            isFollowed ? Icons.star : Icons.star_border,
-                            color: isFollowed ? Colors.amber : null,
-                          ),
-                          onPressed: isFollowed
-                              ? null
-                              : () => controller.followRoom(item),
-                        ),
+                        trailing: Obx(() {
+                          var followed = controller.isFollowed(id);
+                          return IconButton(
+                            icon: Icon(
+                              followed ? Icons.favorite : Icons.favorite_border,
+                              color: followed ? Colors.red : null,
+                            ),
+                            onPressed: followed
+                                ? null
+                                : () => controller.followRoom(item),
+                          );
+                        }),
                         onTap: () => controller.followRoom(item),
                       ),
                     );

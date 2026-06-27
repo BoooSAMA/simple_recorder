@@ -258,7 +258,7 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
     }
     try {
       if (Platform.isAndroid) {
-        const channel = MethodChannel('com.xycz.simple_live/open_folder');
+        const channel = MethodChannel('com.simple_recorder/open_folder');
         await channel.invokeMethod('openFolder', {'path': saveDir});
       } else {
         var result = await OpenFilex.open(saveDir);

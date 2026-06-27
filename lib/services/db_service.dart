@@ -17,28 +17,9 @@ class DBService extends GetxService {
   List<FollowUser> getFollowList() {
     var list = _followBox.values.toList();
     list.sort((a, b) {
-      if (a.isPinned != b.isPinned) {
-        return a.isPinned ? -1 : 1;
-      }
       return b.addTime.compareTo(a.addTime);
     });
     return list;
-  }
-
-  Future<void> pinFollow(String id) async {
-    var user = _followBox.get(id);
-    if (user != null) {
-      user.isPinned = true;
-      await _followBox.put(id, user);
-    }
-  }
-
-  Future<void> unpinFollow(String id) async {
-    var user = _followBox.get(id);
-    if (user != null) {
-      user.isPinned = false;
-      await _followBox.put(id, user);
-    }
   }
 
   bool getFollowExist(String id) {
