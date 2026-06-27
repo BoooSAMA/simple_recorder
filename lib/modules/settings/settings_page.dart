@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/follow_export_service.dart';
@@ -8,6 +9,8 @@ import 'package:simple_recorder/widgets/settings/settings_card.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
+
+  static final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
 
   @override
   Widget build(BuildContext context) {
@@ -97,9 +100,17 @@ class SettingsPage extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const ListTile(
-                  title: Text("版本"),
-                  trailing: Text("0.1.0"),
+                FutureBuilder<PackageInfo>(
+                  future: _packageInfo,
+                  builder: (context, snapshot) {
+                    final version = snapshot.hasData
+                        ? snapshot.data!.version
+                        : "...";
+                    return ListTile(
+                      title: const Text("版本"),
+                      trailing: Text(version),
+                    );
+                  },
                 ),
                 const ListTile(
                   title: Text("开源协议"),
