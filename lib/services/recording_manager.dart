@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:get/get.dart';
 import 'package:simple_recorder/app/log.dart';
@@ -40,13 +41,33 @@ class RecordingManager extends GetxService {
     await session.start();
   }
 
-  Future<void> stopRecording(String taskId) async {
+  /// Returns a map with 'path', 'fileName', 'fileSize' if file was saved.
+  Future<Map<String, String>?> stopRecording(String taskId) async {
     var session = getSession(taskId);
-    if (session == null) return;
+    if (session == null) return null;
 
     await session.stop();
+    var path = session.outputPath;
+    var fileInfo = <String, String>{};
+    if (path.isNotEmpty) {
+      var file = File(path);
+      if (await file.exists()) {
+        fileInfo['path'] = path;
+        fileInfo['fileName'] = path.split('/').last;
+        var bytes = file.lengthSync();
+        fileInfo['fileSize'] = _formatSize(bytes);
+      }
+    }
     activeSessions.remove(session);
     activeCount.value = activeSessions.length;
+    return fileInfo.isNotEmpty ? fileInfo : null;
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
   Future<void> cancelRecording(String taskId) async {

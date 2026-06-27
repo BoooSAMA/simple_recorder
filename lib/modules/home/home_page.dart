@@ -61,9 +61,21 @@ class HomePage extends StatelessWidget {
                 case 'import':
                   controller.importData();
                   break;
+                case 'audio_path':
+                  Get.toNamed(RoutePath.kAudioSettings);
+                  break;
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'audio_path',
+                child: ListTile(
+                  leading: Icon(Icons.folder_outlined),
+                  title: Text('音频存储路径'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
               PopupMenuItem(
                 value: 'export',
                 child: ListTile(
@@ -193,15 +205,23 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  /// 分组列表：直播中 + 未开播 两个 section
+  /// 分组列表：直播中 + 未开播 两个 section（2 列 Grid）
   Widget _buildGroupedList(BuildContext context, HomeController controller) {
     final liveItems = controller.liveList;
     final notLiveItems = controller.notLiveList;
+
+    const gridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: 0.85,
+    );
 
     return RefreshIndicator(
       onRefresh: () => controller.checkAllLiveStatus(),
       child: CustomScrollView(
         slivers: [
+          const SliverPadding(padding: EdgeInsets.only(bottom: 4)),
           if (liveItems.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: _buildSectionHeader(
@@ -209,13 +229,17 @@ class HomePage extends StatelessWidget {
                 icon: Icons.live_tv, color: Colors.green,
               ),
             ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _RoomCard(
-                  key: ValueKey(liveItems[i].id),
-                  user: liveItems[i],
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+              sliver: SliverGrid(
+                gridDelegate: gridDelegate,
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => _RoomCard(
+                    key: ValueKey(liveItems[i].id),
+                    user: liveItems[i],
+                  ),
+                  childCount: liveItems.length,
                 ),
-                childCount: liveItems.length,
               ),
             ),
           ],
@@ -226,13 +250,17 @@ class HomePage extends StatelessWidget {
                 icon: Icons.schedule, color: Colors.grey,
               ),
             ),
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _RoomCard(
-                  key: ValueKey(notLiveItems[i].id),
-                  user: notLiveItems[i],
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+              sliver: SliverGrid(
+                gridDelegate: gridDelegate,
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => _RoomCard(
+                    key: ValueKey(notLiveItems[i].id),
+                    user: notLiveItems[i],
+                  ),
+                  childCount: notLiveItems.length,
                 ),
-                childCount: notLiveItems.length,
               ),
             ),
           ],
@@ -297,8 +325,14 @@ class HomePage extends StatelessWidget {
   Widget _buildSimpleList(BuildContext context, HomeController controller) {
     return RefreshIndicator(
       onRefresh: () => controller.checkAllLiveStatus(),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+      child: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 0.85,
+        ),
         itemCount: controller.followList.length,
         itemBuilder: (context, index) {
           var user = controller.followList[index];
@@ -329,29 +363,30 @@ class _RoomCard extends StatelessWidget {
     final isPinned = AppSettingsController.instance.isFollowPinned(user.id);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: isPinned
             ? Border.all(color: Colors.green, width: 2.0)
             : null,
       ),
       child: Card(
         margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 第一行：头像 + 信息（名字在上，状态+pin 在下）
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // 头像
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                     child: SizedBox(
-                      width: 80,
-                      height: 80,
+                      width: 56,
+                      height: 56,
                       child: user.face.isNotEmpty
                           ? Image.network(user.face, fit: BoxFit.cover)
                           : Center(
@@ -359,91 +394,90 @@ class _RoomCard extends StatelessWidget {
                                 user.userName.isNotEmpty
                                     ? user.userName[0]
                                     : "?",
-                                style: const TextStyle(fontSize: 28),
+                                style: const TextStyle(fontSize: 22),
                               ),
                             ),
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  // 中间信息区域
+                  const SizedBox(width: 6),
+                  // 名字 + 状态/pin
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 用户名
+                        Text(
+                          user.userName,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        // 开播状态 + pin
                         Row(
                           children: [
-                            Flexible(
-                              child: Text(
-                                user.userName,
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                overflow: TextOverflow.ellipsis,
+                            _StatusIndicator(liveStatus: liveStatus),
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () async {
+                                await AppSettingsController.instance
+                                    .toggleFollowPin(user.id);
+                                controller.filterData();
+                              },
+                              icon: Icon(
+                                isPinned
+                                    ? Icons.push_pin
+                                    : Icons.push_pin_outlined,
+                                size: 16,
+                                color: isPinned ? Colors.amber : Colors.grey,
+                              ),
+                              tooltip: isPinned ? '取消置顶' : '置顶',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 24,
+                                minHeight: 24,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        // 直播状态 + 录制中时长/大小（响应式）
-                        _RecordingStatusBar(
-                          liveStatus: liveStatus,
-                          user: user,
-                        ),
-                        const SizedBox(height: 10),
-                        // 录制控制按钮区（响应式 — 观察 activeSessions）
-                        _ReactiveRecordingControls(
-                          liveStatus: liveStatus,
-                          user: user,
-                          controller: controller,
-                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  // Pin 按钮 + 更多菜单
-                  Column(
-                    children: [
-                      IconButton(
-                        onPressed: () async {
-                          await AppSettingsController.instance
-                              .toggleFollowPin(user.id);
-                          controller.filterData();
-                        },
-                        icon: Icon(
-                          isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                          size: 20,
-                          color: isPinned ? Colors.amber : Colors.grey,
+                  // 更多菜单
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == "delete") {
+                        controller.removeFollow(user);
+                      }
+                    },
+                    icon: const Icon(Icons.more_vert, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 24,
+                      minHeight: 24,
+                    ),
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(
+                        value: "delete",
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_outline, size: 18),
+                            SizedBox(width: 8),
+                            Text("取消关注"),
+                          ],
                         ),
-                        tooltip: isPinned ? '取消置顶' : '置顶',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 36,
-                          minHeight: 36,
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        onSelected: (value) {
-                          if (value == "delete") {
-                            controller.removeFollow(user);
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          const PopupMenuItem(
-                            value: "delete",
-                            child: Row(
-                              children: [
-                                Icon(Icons.delete_outline, size: 18),
-                                SizedBox(width: 8),
-                                Text("取消关注"),
-                              ],
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
                 ],
+              ),
+              const SizedBox(height: 6),
+              // 录制按钮 — 全宽独立行
+              _CompactRecordingControls(
+                liveStatus: liveStatus,
+                user: user,
+                controller: controller,
               ),
               // 录制中的调试日志（响应式）
               _ReactiveDebugLog(user: user),
@@ -455,60 +489,13 @@ class _RoomCard extends StatelessWidget {
   }
 }
 
-/// 直播状态指示器 + 录制中时长（响应式）
-class _RecordingStatusBar extends StatelessWidget {
-  final int liveStatus;
-  final FollowUser user;
-
-  const _RecordingStatusBar({
-    required this.liveStatus,
-    required this.user,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      // 订阅 activeSessions 变化（确保录制开始时立即重建）
-      // ignore: unused_local_variable
-      final _ = RecordingManager.instance.activeSessions.length;
-      var session = RecordingManager.instance.getSession(user.id);
-      var isRecording = session?.isRecording.value ?? false;
-      var duration = session?.duration.value ?? "00:00";
-      var fileSize = session?.fileSize.value ?? "";
-      var retryCount = session?.retryCount.value ?? 0;
-
-      return Row(
-        children: [
-          _StatusIndicator(liveStatus: liveStatus),
-          const SizedBox(width: 8),
-          if (isRecording)
-            Text(
-              "$duration · $fileSize",
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          if (retryCount > 0)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Text(
-                "重连中($retryCount/3)",
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.orange,
-                    ),
-              ),
-            ),
-        ],
-      );
-    });
-  }
-}
-
-/// 录制控制按钮区（响应式 — Obx 订阅 activeSessions）
-class _ReactiveRecordingControls extends StatelessWidget {
+/// 录制控制按钮（全宽行，含录制时长信息）
+class _CompactRecordingControls extends StatelessWidget {
   final int liveStatus;
   final FollowUser user;
   final HomeController controller;
 
-  const _ReactiveRecordingControls({
+  const _CompactRecordingControls({
     required this.liveStatus,
     required this.user,
     required this.controller,
@@ -517,76 +504,91 @@ class _ReactiveRecordingControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      // 订阅 activeSessions 变化，确保停止/取消后立即更新
-      // ignore: unused_local_variable
       final _ = RecordingManager.instance.activeSessions.length;
       var session = RecordingManager.instance.getSession(user.id);
       var isRecording = session?.isRecording.value ?? false;
-
+      var duration = session?.duration.value ?? "00:00";
+      var fileSize = session?.fileSize.value ?? "";
       var theme = Theme.of(context);
 
       if (isRecording) {
-        return Row(
+        return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GestureDetector(
-              onTap: () => controller.stopRecording(user),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(8),
+            Row(
+              children: [
+                Icon(Icons.fiber_manual_record, size: 10, color: Colors.red),
+                const SizedBox(width: 4),
+                Text(
+                  "$duration · $fileSize",
+                  style: theme.textTheme.labelSmall?.copyWith(color: Colors.red),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.stop, color: Colors.white, size: 18),
-                    const SizedBox(width: 6),
-                    const Text(
-                      "停止",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => controller.cancelRecording(user),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.red, width: 1.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.close, color: Colors.red, size: 18),
-                    const SizedBox(width: 6),
-                    const Text(
-                      "取消",
-                      style: TextStyle(
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => controller.stopRecording(user),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      decoration: BoxDecoration(
                         color: Colors.red,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.stop, color: Colors.white, size: 16),
+                          SizedBox(width: 2),
+                          Text(
+                            "停止",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => controller.cancelRecording(user),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.red, width: 1),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.close, color: Colors.red, size: 16),
+                          SizedBox(width: 2),
+                          Text(
+                            "取消",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         );
       }
 
-      // 未录制
       final isLive = liveStatus == 2;
       final isUnknown = liveStatus == 0;
       final buttonColor = isLive ? theme.colorScheme.primary : Colors.grey;
@@ -594,30 +596,30 @@ class _ReactiveRecordingControls extends StatelessWidget {
       return GestureDetector(
         onTap: () => controller.toggleRecording(user),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(5),
             border: Border.all(
               color: buttonColor.withValues(alpha: 0.5),
-              width: 1.5,
+              width: 1,
             ),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 isLive ? Icons.mic : Icons.mic_none,
-                size: 18,
+                size: 16,
                 color: isUnknown ? Colors.grey : buttonColor,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               Text(
-                isUnknown ? "检查中..." : (isLive ? "录制" : "未开播"),
+                isUnknown ? "检查中" : (isLive ? "录制" : "未开播"),
                 style: TextStyle(
                   color: isUnknown ? Colors.grey : buttonColor,
                   fontWeight: FontWeight.w600,
-                  fontSize: 13,
+                  fontSize: 12,
                 ),
               ),
             ],

@@ -127,7 +127,7 @@ class HomeController extends GetxController {
     filterData();
   }
 
-  /// 分批并发检查所有直播间直播状态
+  /// 高并发检查所有直播间直播状态（不预重置，每完成一个立即更新 UI）
   Future<void> checkAllLiveStatus() async {
     if (followList.isEmpty) return;
 
@@ -135,16 +135,19 @@ class HomeController extends GetxController {
     loadProgress.value = 0.0;
 
     final users = followList.toList();
-    for (final user in users) {
-      user.liveStatus.value = 1;
-    }
-    liveList.value = [];
-    notLiveList.value = users.toList();
-
     final liveIds = <String>{};
     int completed = 0;
-    const maxConcurrency = 5;
+    const maxConcurrency = 8;
 
+    // 不预重置状态 — 保持旧状态直到新结果返回，避免闪烁
+    for (final user in users) {
+      // 只重置未知状态
+      if (user.liveStatus.value == 0) {
+        user.liveStatus.value = 1;
+      }
+    }
+
+    // 分批并发
     for (var i = 0; i < users.length; i += maxConcurrency) {
       final end = (i + maxConcurrency > users.length)
           ? users.length
@@ -167,10 +170,10 @@ class HomeController extends GetxController {
         } finally {
           completed++;
           loadProgress.value = completed / users.length;
+          // 每完成一个立即同步列表，渐进式更新 UI
+          _syncLists(users, liveIds);
         }
       }));
-
-      _syncLists(users, liveIds);
     }
 
     filterData();
@@ -274,13 +277,25 @@ class HomeController extends GetxController {
 
   /// 停止录制（保存文件）
   void stopRecording(FollowUser user) async {
-    await RecordingManager.instance.stopRecording(user.id);
-    Get.snackbar(
-      "录制已停止",
-      "文件已保存",
-      snackPosition: SnackPosition.BOTTOM,
-      duration: const Duration(seconds: 2),
-    );
+    var fileInfo = await RecordingManager.instance.stopRecording(user.id);
+    if (fileInfo != null) {
+      Get.snackbar(
+        "录制已停止",
+        "文件名: ${fileInfo['fileName']}\n"
+        "大小: ${fileInfo['fileSize']}\n"
+        "路径: ${fileInfo['path']}",
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
+        maxWidth: Get.width * 0.9,
+      );
+    } else {
+      Get.snackbar(
+        "录制已停止",
+        "文件已保存",
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 2),
+      );
+    }
   }
 
   /// 取消录制（删除文件）

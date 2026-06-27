@@ -27,8 +27,10 @@ class RecordingSession {
   int _retries = 0;
   static const int maxRetries = 3;
   String _outputPath = "";
+  String get outputPath => _outputPath;
   bool _discardRequested = false;
   DateTime? _startTime;
+  Completer<void>? _finishCompleter;
 
   String Function()? _getPlayUrl;
   Future<void> Function()? _onRefreshPlayUrl;
@@ -200,12 +202,16 @@ class RecordingSession {
 
   Future<void> stop() async {
     _discardRequested = false;
+    _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
+    await _finishCompleter!.future;
   }
 
   Future<void> cancel() async {
     _discardRequested = true;
+    _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
+    await _finishCompleter!.future;
   }
 
   void forceStop() {
@@ -216,6 +222,7 @@ class RecordingSession {
       _sessionId = null;
     }
     isRecording.value = false;
+    _finishCompleter?.complete();
   }
 
   void _doCancelFFmpeg() {
@@ -237,6 +244,7 @@ class RecordingSession {
     _timer = null;
     isRecording.value = false;
     _sessionId = null;
+    _finishCompleter?.complete();
   }
 
   Future<void> _renameFileWithEndTime() async {
