@@ -65,32 +65,6 @@ class LiveSearchController extends GetxController {
     try {
       var result = await site.liveSite.searchRooms(keyword, page: _page);
 
-      // 猫耳FM没有搜索API，尝试直接按房间号查询
-      if (result.items.isEmpty && site.id == Constant.kMaoerfm) {
-        var roomId = keyword.trim();
-        if (RegExp(r'^\d+$').hasMatch(roomId)) {
-          try {
-            var detail = await site.liveSite.getRoomDetail(roomId: roomId);
-            if (detail.roomId.isNotEmpty) {
-              result = LiveSearchRoomResult(
-                hasMore: false,
-                items: [
-                  LiveRoomItem(
-                    roomId: detail.roomId,
-                    title: detail.title,
-                    cover: detail.cover,
-                    userName: detail.userName,
-                    online: detail.online,
-                  ),
-                ],
-              );
-            }
-          } catch (_) {
-            // 房间号查询失败，保持空结果
-          }
-        }
-      }
-
       if (loadMore) {
         searchResults.addAll(result.items);
       } else {
