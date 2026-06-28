@@ -99,7 +99,7 @@ class RecordingSession {
       }
     }
 
-    _outputPath = "$saveDir/${userName}_$timestamp.m4a";
+    _outputPath = "$saveDir/${userName}_$timestamp.ts";
     _startTime = DateTime.now();
     _discardRequested = false;
     _retries = 0;
@@ -146,7 +146,7 @@ class RecordingSession {
 
     args.addAll(['-i', playUrl]);
     args.addAll(['-c:a', 'copy', '-vn']);
-    args.addAll(['-f', 'mp4', _outputPath]);
+    args.addAll(['-f', 'mpegts', _outputPath]);
 
     if (_retries == 0) {
       Log.logPrint("开始录音: ${args.join(' ')}");
@@ -260,7 +260,7 @@ class RecordingSession {
         "${start.hour.toString().padLeft(2, '0')}-${start.minute.toString().padLeft(2, '0')}";
     var endPart =
         "${endTime.hour.toString().padLeft(2, '0')}-${endTime.minute.toString().padLeft(2, '0')}";
-    var newName = "${userName}_${datePart}_${startPart}_$endPart.m4a";
+    var newName = "${userName}_${datePart}_${startPart}_$endPart.ts";
     var newPath = "$dir/$newName";
     try {
       await file.rename(newPath);
