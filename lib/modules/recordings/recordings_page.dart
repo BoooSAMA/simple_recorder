@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:open_filex/open_filex.dart';
 
+import 'package:simple_recorder/modules/recordings/audio_player_sheet.dart';
 import 'package:simple_recorder/modules/recordings/recordings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 
@@ -169,7 +169,11 @@ class RecordingsPage extends StatelessWidget {
       BuildContext context, RecordingItem item, int index, int total) {
     var theme = Theme.of(context);
     return InkWell(
-      onTap: () => OpenFilex.open(item.path),
+      onTap: () => ShowAudioPlayerSheet.show(
+        context,
+        filePath: item.path,
+        fileName: item.fileName,
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
