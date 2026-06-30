@@ -69,6 +69,9 @@ class HomePage extends StatelessWidget {
                 case 'ts_unpack':
                   Get.toNamed(RoutePath.kTsUnpack);
                   break;
+                case 'recordings':
+                  Get.toNamed(RoutePath.kRecordings);
+                  break;
               }
             },
             itemBuilder: (context) => const [
@@ -95,6 +98,15 @@ class HomePage extends StatelessWidget {
                 child: ListTile(
                   leading: Icon(Icons.file_download),
                   title: Text('导入关注数据'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'recordings',
+                child: ListTile(
+                  leading: Icon(Icons.headphones_outlined),
+                  title: Text('录音文件'),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),

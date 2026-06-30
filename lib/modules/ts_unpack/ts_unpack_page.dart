@@ -367,12 +367,13 @@ class TsUnpackPage extends StatelessWidget {
   /// 底部操作栏
   Widget _buildBottomBar(BuildContext context, TsUnpackController controller) {
     var theme = Theme.of(context);
+    var bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Obx(() {
       if (controller.isProcessing.value) {
         // ── 处理中状态 ──
         return Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottomInset),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             border: Border(
@@ -435,7 +436,7 @@ class TsUnpackPage extends StatelessWidget {
       // ── 空闲状态 ──
       var selected = controller.selectedCount;
       return Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+        padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           border: Border(

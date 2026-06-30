@@ -238,6 +238,10 @@ class RecordingSession {
   Future<void> _onFinished() async {
     if (_startTime != null && _outputPath.isNotEmpty && !_discardRequested) {
       await _renameFileWithEndTime();
+      // 成功完成录音后，自动解包 TS → M4A
+      if (_outputPath.endsWith('.ts')) {
+        await _autoUnpackToM4A();
+      }
     }
     _startTime = null;
     _timer?.cancel();
@@ -245,6 +249,32 @@ class RecordingSession {
     isRecording.value = false;
     _sessionId = null;
     _finishCompleter?.complete();
+  }
+
+  /// 将完成录制的 TS 文件自动解包为 M4A（纯 remux，`-c:a copy`，不重编码）
+  Future<void> _autoUnpackToM4A() async {
+    var tsPath = _outputPath;
+    if (tsPath.isEmpty || !tsPath.endsWith('.ts')) return;
+
+    var m4aPath = tsPath.replaceAll('.ts', '.m4a');
+    // 避免重复解包（如手动解包工具已处理过）
+    if (File(m4aPath).existsSync()) return;
+
+    var args = ['-y', '-i', tsPath, '-c:a', 'copy', '-vn', m4aPath];
+    Log.logPrint("自动解包 TS → M4A: ${args.join(' ')}");
+
+    var completer = Completer<void>();
+    FFmpegKit.executeWithArgumentsAsync(args, (session) async {
+      var returnCode = await session.getReturnCode();
+      if (ReturnCode.isSuccess(returnCode)) {
+        Log.logPrint("自动解包成功: $m4aPath");
+        _outputPath = m4aPath; // 更新路径指向 M4A
+      } else {
+        Log.logPrint("自动解包失败: $tsPath");
+      }
+      completer.complete();
+    });
+    await completer.future;
   }
 
   Future<void> _renameFileWithEndTime() async {

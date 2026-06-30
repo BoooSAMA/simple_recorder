@@ -2,12 +2,11 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
+import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/widgets/settings/settings_card.dart';
 
 class AudioSettingsPage extends GetView<AppSettingsController> {
@@ -104,7 +103,7 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
     }
 
     var files = dir
-        .listSync()
+        .listSync(recursive: true)
         .whereType<File>()
         .where((f) => f.path.endsWith('.m4a'))
         .toList()
@@ -245,29 +244,7 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
     );
   }
 
-  void _openSaveDir() async {
-    var saveDir = controller.audioSavePath.value;
-    if (saveDir.isEmpty) {
-      var appDir = await getApplicationDocumentsDirectory();
-      saveDir = appDir.path;
-    }
-    var dir = Directory(saveDir);
-    if (!dir.existsSync()) {
-      SmartDialog.showToast("存储目录不存在");
-      return;
-    }
-    try {
-      if (Platform.isAndroid) {
-        const channel = MethodChannel('com.simple_recorder/open_folder');
-        await channel.invokeMethod('openFolder', {'path': saveDir});
-      } else {
-        var result = await OpenFilex.open(saveDir);
-        if (result.type != ResultType.done) {
-          SmartDialog.showToast("无法打开文件夹，请手动前往路径查看");
-        }
-      }
-    } catch (e) {
-      SmartDialog.showToast("无法打开文件夹，请手动前往路径查看");
-    }
+  void _openSaveDir() {
+    Get.toNamed(RoutePath.kRecordings);
   }
 }
