@@ -106,7 +106,7 @@ class HomePage extends StatelessWidget {
                 value: 'recordings',
                 child: ListTile(
                   leading: Icon(Icons.headphones_outlined),
-                  title: Text('录音文件'),
+                  title: Text('查看录音文件'),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),
