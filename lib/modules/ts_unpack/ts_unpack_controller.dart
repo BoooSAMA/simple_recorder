@@ -184,7 +184,7 @@ class TsUnpackController extends GetxController {
     var confirm = await Get.dialog<bool>(
       AlertDialog(
         title: const Text("确认删除"),
-        content: Text("将删除 ${toDelete.length} 个已解包文件（TS 及对应的 M4A），是否继续？"),
+        content: Text("将删除 ${toDelete.length} 个已解包的 TS 文件，对应的 M4A 不受影响，是否继续？"),
         actions: [
           TextButton(
             onPressed: () => Get.back(result: false),
@@ -204,12 +204,8 @@ class TsUnpackController extends GetxController {
     var failCount = 0;
     for (var file in toDelete) {
       try {
-        // 删除 TS
         var tsFile = File(file.path);
         if (await tsFile.exists()) await tsFile.delete();
-        // 删除对应的 M4A
-        var m4aFile = File(file.path.replaceAll('.ts', '.m4a'));
-        if (await m4aFile.exists()) await m4aFile.delete();
         successCount++;
       } catch (e) {
         failCount++;
@@ -219,7 +215,7 @@ class TsUnpackController extends GetxController {
     // 重新扫描
     scanDirectory();
 
-    var msg = "已删除 $successCount 个文件";
+    var msg = "已删除 $successCount 个 TS 文件";
     if (failCount > 0) msg += "，$failCount 个失败";
     SmartDialog.showToast(msg);
   }
