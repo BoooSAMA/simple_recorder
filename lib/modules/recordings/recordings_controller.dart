@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
@@ -8,12 +10,14 @@ class RecordingItem {
   final String path;
   final String fileName;
   final String folderName;
+  final RxBool isSelected;
 
   RecordingItem({
     required this.path,
     required this.fileName,
     required this.folderName,
-  });
+    bool selected = false,
+  }) : isSelected = RxBool(selected);
 
   String get fileSize {
     try {

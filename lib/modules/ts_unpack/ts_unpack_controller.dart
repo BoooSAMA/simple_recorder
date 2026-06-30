@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
@@ -74,6 +75,17 @@ class TsUnpackController extends GetxController {
     return count;
   }
 
+  /// 计算选中中已解包的文件数（可删除）
+  int get unpackedSelectedCount {
+    int count = 0;
+    for (var group in groups) {
+      for (var file in group.files) {
+        if (file.isSelected.value && file.isUnpacked.value) count++;
+      }
+    }
+    return count;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -140,6 +152,76 @@ class TsUnpackController extends GetxController {
       }
     }
     update();
+  }
+
+  /// 全选所有已解包的文件（可删除）
+  void selectUnpacked() {
+    for (var group in groups) {
+      for (var file in group.files) {
+        if (file.isUnpacked.value) {
+          file.isSelected.value = true;
+        } else {
+          file.isSelected.value = false;
+        }
+      }
+    }
+    update();
+  }
+
+  /// 删除选中的已解包文件（TS + 对应 M4A）
+  Future<void> deleteSelected() async {
+    var toDelete = <FileItem>[];
+    for (var group in groups) {
+      for (var file in group.files) {
+        if (file.isSelected.value && file.isUnpacked.value) {
+          toDelete.add(file);
+        }
+      }
+    }
+    if (toDelete.isEmpty) return;
+
+    // 确认对话框
+    var confirm = await Get.dialog<bool>(
+      AlertDialog(
+        title: const Text("确认删除"),
+        content: Text("将删除 ${toDelete.length} 个已解包文件（TS 及对应的 M4A），是否继续？"),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text("取消"),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text("删除"),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    var successCount = 0;
+    var failCount = 0;
+    for (var file in toDelete) {
+      try {
+        // 删除 TS
+        var tsFile = File(file.path);
+        if (await tsFile.exists()) await tsFile.delete();
+        // 删除对应的 M4A
+        var m4aFile = File(file.path.replaceAll('.ts', '.m4a'));
+        if (await m4aFile.exists()) await m4aFile.delete();
+        successCount++;
+      } catch (e) {
+        failCount++;
+      }
+    }
+
+    // 重新扫描
+    scanDirectory();
+
+    var msg = "已删除 $successCount 个文件";
+    if (failCount > 0) msg += "，$failCount 个失败";
+    SmartDialog.showToast(msg);
   }
 
   /// 仅选中中断文件

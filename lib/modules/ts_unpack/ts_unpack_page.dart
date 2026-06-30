@@ -435,6 +435,7 @@ class TsUnpackPage extends StatelessWidget {
 
       // ── 空闲状态 ──
       var selected = controller.selectedCount;
+      var delSelected = controller.unpackedSelectedCount;
       return Container(
         padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
         decoration: BoxDecoration(
@@ -449,43 +450,65 @@ class TsUnpackPage extends StatelessWidget {
             TextButton(
               onPressed: () => controller.selectInterrupted(),
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 visualDensity: VisualDensity.compact,
                 foregroundColor: Colors.red,
               ),
               child: const Text("全选中断", style: TextStyle(fontSize: 12)),
             ),
             const SizedBox(width: 2),
-            // 全选
+            // 全选已解
             TextButton(
-              onPressed: () => controller.selectAll(),
+              onPressed: () => controller.selectUnpacked(),
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 visualDensity: VisualDensity.compact,
               ),
-              child: const Text("全选", style: TextStyle(fontSize: 12)),
+              child: const Text("全选已解", style: TextStyle(fontSize: 12)),
             ),
             const SizedBox(width: 2),
             // 取消选择
             TextButton(
               onPressed: () => controller.deselectAll(),
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 visualDensity: VisualDensity.compact,
               ),
               child: const Text("取消选择", style: TextStyle(fontSize: 12)),
             ),
             const Spacer(),
-            // 开始解包
+            // 删除（仅对已解包文件）
             FilledButton.icon(
-              onPressed: selected > 0 ? () => controller.startBatchUnpack() : null,
+              onPressed: delSelected > 0
+                  ? () => controller.deleteSelected()
+                  : null,
+              icon: const Icon(Icons.delete_outline, size: 16),
+              label: const Text("删除", style: TextStyle(fontSize: 13)),
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.colorScheme.error,
+                foregroundColor: theme.colorScheme.onError,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                visualDensity: VisualDensity.compact,
+                disabledBackgroundColor:
+                    theme.colorScheme.error.withAlpha(60),
+                disabledForegroundColor:
+                    theme.colorScheme.onError.withAlpha(100),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 解包
+            FilledButton.icon(
+              onPressed:
+                  selected > 0 ? () => controller.startBatchUnpack() : null,
               icon: const Icon(Icons.unarchive, size: 16),
               label: Text(
-                selected > 0 ? "解包 ($selected)" : "开始解包",
+                selected > 0 ? "解包 ($selected)" : "解包",
                 style: const TextStyle(fontSize: 13),
               ),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 visualDensity: VisualDensity.compact,
               ),
             ),
