@@ -1,8 +1,8 @@
 # Simple Recorder
 
-> **多平台直播音频录制工具** — 基于 Flutter 构建，支持 Bilibili / 抖音 / 斗鱼 / 虎牙等多平台直播间音频录制。
+> **多平台直播音频录制工具** — 基于 Flutter 构建，支持 Bilibili / 抖音 / 斗鱼 / 虎牙 / 猫耳FM 多平台直播间音频录制。
 >
-> **录播功能仅限自用，禁止将录播文件分发至网上。**
+> **录播仅限自用，禁止将录播文件分发至网上。**
 
 ## 项目背景
 
@@ -13,20 +13,67 @@
 
 ## 功能特性
 
-- **多平台搜索** — 支持 Bilibili、抖音、斗鱼、虎牙四大平台直播间搜索
-- **纯音频录制** — 仅录制音频，无视频直播观看功能
-- **并行录制** — 基于 FFmpeg 同时录制多个直播间，互不干扰
-- **双列卡片 UI** — 2 列 Grid 紧凑布局，头像 + 开播状态灯 + 录制控制
-- **分组筛选** — 直播中 / 未开播分组展示，支持置顶
-- **直播状态监测** — 高并发自动检测（8 路并行），渐进式 UI 更新
+### 🎙️ 录制核心
+
+- **多平台支持** — Bilibili、抖音、斗鱼、虎牙、猫耳FM 五大平台
+- **纯音频录制** — 基于 FFmpeg 仅录制音频流 (c:a copy, 不重编码)，节省存储空间
+- **并行录制** — 同时录制多个直播间，互不干扰
 - **断线自动重连** — 录制中断自动重试（最多 3 次），保障录制完整性
-- **录制进度实时显示** — 毛玻璃底板上显示录制时长（红）和文件大小（白）
-- **按主播名分类** — 自动按主播名创建文件夹存储音频文件
-- **录制完成详情** — 录制结束后显示文件名、文件大小、保存路径
-- **卡片淡入动画** — 列表加载时卡片带微上浮淡入效果
-- **涟漪按钮反馈** — 录制/停止/取消按钮带 Material 涟漪动画
-- **后台运行** — 支持后台持续录制
-- **Debug 日志** — 每个录制卡片显示可收起的调试日志
+- **FFmpeg TS 格式封装** — 录制时暂存为 TS 片段，停止后自动合成为 M4A 文件
+- **后台持续录制** — 支持 app 切到后台后持续录制
+
+### 📡 直播状态监测
+
+- **分批并发检测** — 每批 5 个直播间并行查询，避免阻塞 UI
+- **渐进式 UI 更新** — 每完成一个立即同步到列表，无需等全量刷新
+- **实时进度反馈** — 刷新按钮内置环形进度 + 百分比文字
+- **分组筛选栏** — 直播中 / 未开播 / 全部 三种视图，带数量 badge
+
+### 🔍 搜索与收藏
+
+- **多平台搜索** — 搜索 Bilibili/抖音/斗鱼/虎牙/猫耳FM 直播间
+- **猫耳FM 房间号搜索** — 支持输入房间号直接定位直播间
+- **即时收藏反馈** — 点击收藏后心形图标立刻变红
+- **收藏分组管理** — 收藏列表区分直播中/未开播，支持搜索
+
+### 🏠 首页卡片布局
+
+- **主播信息卡片** — 头像 + 用户名 + 直播状态指示灯 + 录制控制
+- **录制控制** — 录制中显示"停止"+"取消"双按钮（红底），支持确认取消
+- **置顶功能** — 点击 📌 图标置顶，绿色边框高亮
+- **循环列表布局** — 非 Grid，单个卡片垂直排列，每行一个
+- **录制完成提示** — 停止录制后 SnackBar 提示"文件已保存"
+
+### ⏱️ 录制实时显示
+
+- **录制时长** — 实时显示已录制时间（时:分:秒）
+- **文件大小** — 实时显示已录制文件大小
+- **错误日志面板** — 录制出错时显示可点击查看的红色日志区域
+- **重连状态提示** — 断线重连时显示"重连中(N/3)"
+
+### 🎬 录音文件管理
+
+- **录音文件浏览** — 独立文件浏览器页面，按主播文件夹分组展示
+- **TS → M4A 解包** — 支持将 TS 片段一键解包为 M4A 音频文件
+- **批量解包** — 跨文件夹多选 TS 文件，批量解包处理
+- **音频播放器** — 内置音频播放器，支持播放、暂停、快进、快退、Seek 进度条
+- **文件编辑** — 支持重命名、删除、批量删除操作
+- **中断 TS 检测** — App 启动时自动扫描异常中断的 TS 文件并标记
+
+### ⚙️ 设置与权限
+
+- **主题切换** — Material3 light/dark 模式切换
+- **音频存储路径** — 自定义录音文件保存目录
+- **按主播名分文件夹** — 自动按主播名创建子文件夹存储
+- **调试日志页面** — 实时日志查看、保存、清空
+- **存储权限** — Android 11+ 自动请求"管理所有文件"权限
+
+### 🚀 性能优化
+
+- **快速启动** — 权限请求异步非阻塞，直播状态在渲染后检测
+- **响应式录制状态** — Obx 订阅 `activeSessions`，录制开始/停止即时刷新
+- **一致 UI 约束** — `ConstrainedBox` 限制长文本溢出，设置页不崩溃
+- **零编译警告** — `flutter analyze` 保持零 error/warning
 
 ## 初期主要功能清单
 
@@ -35,34 +82,44 @@
 - [x] 仅提供搜索与收藏，移除首页推荐
 - [x] 每个直播间卡片显示可收起的 Debug 日志
 - [x] 显示录播中的状态（时长、文件大小）
-- [x] 刷新重连直播间功能
-- [x] 断线自动拼接/重连
+- [x] 刷新直播间状态功能（含进度百分比）
+- [x] 断线自动拼接/重连（最多 3 次）
 - [x] 保证后台运行
 - [x] 简化报错提示
 - [x] 按主播名自动创建文件夹保存
-- [x] 2 列卡片 Grid UI 布局
 - [x] 分组筛选（直播中/未开播/全部）
-- [x] 置顶收藏直播间
-- [x] 录制完成详情提示（文件名、大小、路径）
-- [x] 毛玻璃录制进度显示
-- [x] 卡片淡入动画 + 按钮涟漪反馈
-- [x] 状态加载性能优化（8 路并发、无闪烁更新）
-- [x] README 中声明仅限自用，禁止分发
+- [x] 置顶收藏直播间（绿色边框高亮）
+- [x] 录制完成提示（文件已保存）
+- [x] 录制时实时显示时长 + 文件大小
+- [x] 停止/取消录制确认对话框
+- [x] 搜索页心形收藏 + 即时变红
+- [x] TS 片段存储 → 一键解包为 M4A
+- [x] 批量多选 TS 文件解包
+- [x] 文件浏览页面（主播文件夹分组）
+- [x] 内置音频播放器（播放/暂停/Seek/快进快退）
+- [x] 录制文件重命名、删除、批量删除
+- [x] 异常中断 TS 文件自动检测标记
+- [x] 猫耳FM 房间号搜索
+- [x] 猫耳FM 直播状态检测与录制
+- [x] 设置页防溢出、主题切换即时生效
+- [x] Android 管理所有文件权限申请
+- [x] App 图标更新（flutter_launcher_icons）
+- [x] 快速启动、非阻塞权限请求
 
 ## 项目结构
 
 ```
 simple_recorder/
 ├── lib/
-│   ├── main.dart                         # 入口
+│   ├── main.dart                         # 入口，初始化 Hive/GetX/Permissions
 │   ├── app/
 │   │   ├── app_style.dart                # Material3 light/dark 主题
 │   │   ├── constant.dart                 # 常量定义
 │   │   ├── log.dart                      # 日志工具
-│   │   ├── sites.dart                    # 多平台站点注册
+│   │   ├── sites.dart                    # 多平台站点注册表
 │   │   ├── event_bus.dart                # 跨模块事件总线
 │   │   └── controller/
-│   │       └── app_settings_controller.dart  # 全局设置
+│   │       └── app_settings_controller.dart  # 全局设置 (path, pin, theme)
 │   ├── models/
 │   │   └── db/
 │   │       ├── follow_user.dart          # 收藏用户模型 (Hive)
@@ -74,17 +131,18 @@ simple_recorder/
 │   │   ├── recording_manager.dart        # 并行录制管理 (RxList)
 │   │   └── follow_export_service.dart    # 数据导入导出
 │   ├── modules/
-│   │   ├── home/                         # 首页（卡片列表 + 录制控制）
-│   │   ├── search/                       # 多平台搜索
-│   │   └── settings/                     # 设置页（存储路径/外观/数据）
+│   │   ├── home/                         # 首页（卡片列表 + 录制控制 + 筛选栏）
+│   │   ├── search/                       # 多平台搜索（心形收藏即时反馈）
+│   │   ├── settings/                     # 设置页（存储路径/外观/数据/日志）
+│   │   ├── recordings/                   # 录音文件浏览 + 音频播放器
+│   │   ├── ts_unpack/                    # TS 解包工具（支持批量多选）
+│   │   └── debug_log/                    # 调试日志页面
 │   ├── routes/
 │   │   ├── app_pages.dart
 │   │   └── route_path.dart
 │   └── widgets/
 │       └── settings/                     # 设置页组件 (card, switch, action)
-├── android/app/src/main/kotlin/.../MainActivity.kt  # Android 打开文件夹
-├── .sisyphus/
-│   └── flutter-overflow-guide.md          # Flutter 溢出调试指南
+├── android/app/src/main/.../MainActivity.kt  # Android MethodChannel
 └── README.md
 ```
 
@@ -127,14 +185,15 @@ flutter analyze
 - `ffmpeg_kit_flutter` — 基于 FFmpeg 的音频录制
 - `hive` — 本地数据持久化
 - `get` — 状态管理与路由
+- `permission_handler` — 运行时权限管理
 
 ## UI 约定
 
-本项目在 2 列 Grid 紧凑布局中有一系列 UI 约定，详见 `AGENTS.md`：
+本项目在卡片布局中有一套 UI 约束，详见 `AGENTS.md`：
 
-- **禁止 Material 包装组件** — 在紧凑空间中用 `GestureDetector` + `SizedBox` 替代 `PopupMenuButton`、`IconButton` 等
-- **GetX 响应式模式** — 卡片状态通过 `Obx(() { final _ = RecordingManager.instance.activeSessions.length; })` 触发
-- **防溢出清单** — 先计算可用宽度，列出固定元素，确保剩余空间足够
+- **紧凑布局** — 在受限空间中用 `GestureDetector` + `SizedBox` 替代 `PopupMenuButton`、`IconButton` 等
+- **响应式模式** — 卡片状态通过 `Obx(() { final _ = RecordingManager.instance.activeSessions.length; })` 触发重绘
+- **防溢出清单** — 先计算可用宽度，列出固定元素，`ConstrainedBox` 限制长文本
 
 ## 免责声明
 
@@ -149,7 +208,7 @@ flutter analyze
 
 ```
 Simple Recorder — 多平台直播音频录制工具
-Copyright (C) 2025  Simple Recorder contributors
+Copyright (C) 2025-2026  Simple Recorder contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
