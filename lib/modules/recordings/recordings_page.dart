@@ -17,6 +17,52 @@ class RecordingsPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text("录音文件"),
         actions: [
+          Obx(() {
+            if (controller.isSelectMode.value) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 删除
+                  GestureDetector(
+                    onTap: controller.selectedCount > 0
+                        ? () => controller.deleteSelected()
+                        : null,
+                    child: SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Icon(
+                        Icons.delete_outline,
+                        size: 20,
+                        color: controller.selectedCount > 0
+                            ? Colors.red
+                            : theme.colorScheme.onSurface.withAlpha(60),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  // 取消选择
+                  GestureDetector(
+                    onTap: () => controller.toggleSelectMode(),
+                    child: const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: Icon(Icons.close, size: 20),
+                    ),
+                  ),
+                ],
+              );
+            }
+            // 正常模式：选择入口
+            return GestureDetector(
+              onTap: () => controller.toggleSelectMode(),
+              child: const SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.checklist, size: 20),
+              ),
+            );
+          }),
+          // 刷新
           GestureDetector(
             onTap: () => controller.scanDirectory(),
             child: const SizedBox(
@@ -155,7 +201,7 @@ class RecordingsPage extends StatelessWidget {
                   var i = entry.key;
                   var item = entry.value;
                   return _buildFileRow(
-                      context, item, i, items.length);
+                      context, controller, item, i, items.length);
                 }).toList(),
               );
             }),
