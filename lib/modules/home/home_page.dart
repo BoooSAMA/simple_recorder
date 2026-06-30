@@ -66,6 +66,9 @@ class HomePage extends StatelessWidget {
                 case 'audio_path':
                   Get.toNamed(RoutePath.kAudioSettings);
                   break;
+                case 'ts_unpack':
+                  Get.toNamed(RoutePath.kTsUnpack);
+                  break;
               }
             },
             itemBuilder: (context) => const [
@@ -92,6 +95,15 @@ class HomePage extends StatelessWidget {
                 child: ListTile(
                   leading: Icon(Icons.file_download),
                   title: Text('导入关注数据'),
+                  contentPadding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'ts_unpack',
+                child: ListTile(
+                  leading: Icon(Icons.unarchive_outlined),
+                  title: Text('TS 解包工具'),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),

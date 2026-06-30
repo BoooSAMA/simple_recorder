@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -33,6 +35,9 @@ void main() async {
   // 新用户首启：请求通知权限和存储权限
   _requestPermissions();
 
+  // 扫描并标记异常中断的 TS 文件
+  _markInterruptedFiles();
+
   initCoreLog();
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -42,6 +47,45 @@ void main() async {
   ));
 
   runApp(const MyApp());
+}
+
+/// 扫描音频目录，将异常中断的 TS 文件（无结束时间段）标记为 _interrupted
+void _markInterruptedFiles() {
+  Future(() async {
+    var savePath = AppSettingsController.instance.audioSavePath.value;
+    if (savePath.isEmpty) return;
+
+    var rootDir = Directory(savePath);
+    if (!await rootDir.exists()) return;
+
+    // 已完成格式: {name}_{date}_{start}_{end}.ts
+    final completedRegex =
+        RegExp(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_\d{2}-\d{2}\.ts$');
+    // App 创建的文件含日期时间
+    final appFileRegex = RegExp(r'_\d{4}-\d{2}-\d{2}_\d{2}');
+
+    try {
+      await for (var entity in rootDir.list(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.ts')) continue;
+
+        var name = entity.path.split('/').last;
+
+        // 跳过已完成或已标记的文件
+        if (completedRegex.hasMatch(name)) continue;
+        if (name.contains('_interrupted')) continue;
+
+        // 非 App 命名的文件不处理
+        if (!appFileRegex.hasMatch(name)) continue;
+
+        // 标记为中断文件
+        var newPath = entity.path.replaceAll('.ts', '_interrupted.ts');
+        await entity.rename(newPath);
+        Log.logPrint("标记中断文件: $name → ${newPath.split('/').last}");
+      }
+    } catch (e) {
+      Log.logPrint("扫描中断文件失败: $e");
+    }
+  });
 }
 
 void _requestPermissions() {

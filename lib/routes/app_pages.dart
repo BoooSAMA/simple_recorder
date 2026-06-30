@@ -5,6 +5,7 @@ import 'package:simple_recorder/modules/settings/settings_page.dart';
 import 'package:simple_recorder/modules/settings/appstyle_setting_page.dart';
 import 'package:simple_recorder/modules/settings/audio_settings_page.dart';
 import 'package:simple_recorder/modules/debug_log/debug_log_page.dart';
+import 'package:simple_recorder/modules/ts_unpack/ts_unpack_page.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 
 class AppPages {
@@ -32,6 +33,10 @@ class AppPages {
     GetPage(
       name: RoutePath.kDebugLog,
       page: () => const DebugLogPage(),
+    ),
+    GetPage(
+      name: RoutePath.kTsUnpack,
+      page: () => const TsUnpackPage(),
     ),
   ];
 }
