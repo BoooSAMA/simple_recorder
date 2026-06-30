@@ -211,57 +211,86 @@ class RecordingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildFileRow(
-      BuildContext context, RecordingItem item, int index, int total) {
+  Widget _buildFileRow(BuildContext context, RecordingsController controller,
+      RecordingItem item, int index, int total) {
     var theme = Theme.of(context);
     return InkWell(
-      onTap: () => ShowAudioPlayerSheet.show(
-        context,
-        filePath: item.path,
-        fileName: item.fileName,
-      ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          border: index < total - 1
-              ? Border(
-                  bottom: BorderSide(
-                      color: theme.dividerColor, width: 0.3))
-              : null,
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.audiotrack, size: 18, color: Colors.grey),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item.fileName,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+      onTap: () {
+        if (controller.isSelectMode.value) {
+          controller.toggleSelection(item);
+        } else {
+          ShowAudioPlayerSheet.show(
+            context,
+            filePath: item.path,
+            fileName: item.fileName,
+          );
+        }
+      },
+      child: Obx(() {
+        var isSelected = item.isSelected.value;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: controller.isSelectMode.value && isSelected
+                ? theme.colorScheme.primary.withAlpha(15)
+                : null,
+            border: index < total - 1
+                ? Border(
+                    bottom: BorderSide(
+                        color: theme.dividerColor, width: 0.3))
+                : null,
+          ),
+          child: Row(
+            children: [
+              if (controller.isSelectMode.value)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(
+                    isSelected
+                        ? Icons.check_box
+                        : Icons.check_box_outline_blank,
+                    size: 20,
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurface.withAlpha(100),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    "${item.fileSize} · ${item.lastModified}",
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurface
-                            .withAlpha(100)),
-                  ),
-                ],
+                )
+              else
+                const Icon(Icons.audiotrack, size: 18, color: Colors.grey),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      item.fileName,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "${item.fileSize} · ${item.lastModified}",
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: theme.colorScheme.onSurface
+                              .withAlpha(100)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.play_circle_outline,
-                size: 18, color: Colors.blue),
-          ],
-        ),
-      ),
+              if (!controller.isSelectMode.value)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8),
+                  child: Icon(Icons.play_circle_outline,
+                      size: 18, color: Colors.blue),
+                ),
+            ],
+          ),
+        );
+      }),
     );
   }
 
