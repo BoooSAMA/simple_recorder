@@ -12,17 +12,23 @@ class TsUnpackPage extends StatelessWidget {
     var controller = Get.put(TsUnpackController());
     return Scaffold(
       appBar: AppBar(
+        leadingWidth: 96,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const BackButton(),
+            GestureDetector(
+              onTap: () => Get.offNamed(RoutePath.kRecordings),
+              child: const SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.headphones_outlined, size: 20),
+              ),
+            ),
+          ],
+        ),
         title: const Text("TS 解包工具"),
         actions: [
-          // 跳转到录音文件
-          GestureDetector(
-            onTap: () => Get.toNamed(RoutePath.kRecordings),
-            child: const SizedBox(
-              width: 40,
-              height: 40,
-              child: Icon(Icons.headphones_outlined, size: 20),
-            ),
-          ),
           GestureDetector(
             onTap: () => controller.scanDirectory(),
             child: const SizedBox(
