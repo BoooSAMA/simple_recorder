@@ -14,6 +14,15 @@ class TsUnpackPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text("TS 解包工具"),
         actions: [
+          // 跳转到录音文件
+          GestureDetector(
+            onTap: () => Get.toNamed(RoutePath.kRecordings),
+            child: const SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(Icons.headphones_outlined, size: 20),
+            ),
+          ),
           GestureDetector(
             onTap: () => controller.scanDirectory(),
             child: const SizedBox(
@@ -269,6 +278,8 @@ class TsUnpackPage extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     semanticLabel: file.fileName,
+                    activeColor: Colors.orange,
+                    checkColor: Colors.white,
                   ),
                 )
               else
@@ -354,7 +365,7 @@ class TsUnpackPage extends StatelessWidget {
                 color: file.isInterrupted && !isUnpacked
                     ? Colors.red
                     : isUnpacked
-                        ? Colors.green
+                        ? (isSelected ? Colors.orange : Colors.green)
                         : theme.colorScheme.onSurface.withAlpha(80),
               ),
             ],
@@ -474,7 +485,7 @@ class TsUnpackPage extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 visualDensity: VisualDensity.compact,
               ),
-              child: const Text("取消选择", style: TextStyle(fontSize: 12)),
+              child: const Text("取消", style: TextStyle(fontSize: 12)),
             ),
             const Spacer(),
             // 删除（仅对已解包文件）

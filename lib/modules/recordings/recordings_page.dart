@@ -17,6 +17,15 @@ class RecordingsPage extends StatelessWidget {
       appBar: AppBar(
         title: const Text("录音文件"),
         actions: [
+          // 跳转到 TS 解包工具
+          GestureDetector(
+            onTap: () => Get.toNamed(RoutePath.kTsUnpack),
+            child: const SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(Icons.unarchive_outlined, size: 20),
+            ),
+          ),
           Obx(() {
             if (controller.isSelectMode.value) {
               return Row(
