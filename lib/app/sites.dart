@@ -1,5 +1,6 @@
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:simple_recorder/app/constant.dart';
+import 'package:simple_recorder/app/sites_fixed.dart';
 
 class Sites {
   static final Map<String, Site> allSites = {
@@ -13,7 +14,7 @@ class Sites {
       id: Constant.kDouYin,
       logo: "",
       name: "抖音",
-      liveSite: DouyinSite(),
+      liveSite: FixedDouyinSite(),
     ),
     Constant.kDouYu: Site(
       id: Constant.kDouYu,
