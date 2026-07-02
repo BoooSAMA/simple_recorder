@@ -45,6 +45,19 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     return count;
   }
 
+  /// 当前在直播的置顶主播数量（用于控制"一键录制"按钮显隐）
+  int get pinnedLiveCount {
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
+    if (pinnedIds.isEmpty) return 0;
+    var count = 0;
+    for (final user in followList) {
+      if (pinnedIds.contains(user.id) && user.liveStatus.value == 2) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -195,7 +208,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     filterData();
   }
 
-  /// 高并发检查所有直播间直播状态（不预重置，每完成一个立即更新 UI）
+  /// 高并发检查所有直播间直播状态（流式并发，始终保持 N 个请求在飞）
   Future<void> checkAllLiveStatus() async {
     if (followList.isEmpty) return;
 
@@ -205,27 +218,25 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     final users = followList.toList();
     final liveIds = <String>{};
     int completed = 0;
-    const maxConcurrency = 8;
+    const maxConcurrency = 20;
 
     // 不预重置状态 — 保持旧状态直到新结果返回，避免闪烁
     for (final user in users) {
-      // 只重置未知状态
       if (user.liveStatus.value == 0) {
         user.liveStatus.value = 1;
       }
     }
 
-    // 分批并发
-    for (var i = 0; i < users.length; i += maxConcurrency) {
-      final end = (i + maxConcurrency > users.length)
-          ? users.length
-          : i + maxConcurrency;
-      final batch = users.sublist(i, end);
+    int cursor = 0;
+    final futures = <Future<void>>[];
 
-      await Future.wait(batch.map((user) async {
+    // 流式并发：每个 worker 处理一个后自动取下一个，始终保持 maxConcurrency 个在飞
+    Future<void> runWorker() async {
+      while (cursor < users.length) {
+        final user = users[cursor++];
         try {
           var site = Sites.getSite(user.siteId);
-          if (site == null) return;
+          if (site == null) continue;
           var isLive =
               await site.liveSite.getLiveStatus(roomId: user.roomId);
           user.liveStatus.value = isLive ? 2 : 1;
@@ -238,11 +249,17 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         } finally {
           completed++;
           loadProgress.value = completed / users.length;
-          // 每完成一个立即同步列表，渐进式更新 UI
           _syncLists(users, liveIds);
         }
-      }));
+      }
     }
+
+    // 启动 maxConcurrency 个并行 worker
+    for (var i = 0; i < maxConcurrency; i++) {
+      futures.add(runWorker());
+    }
+
+    await Future.wait(futures);
 
     filterData();
     isLoading.value = false;

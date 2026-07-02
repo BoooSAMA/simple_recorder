@@ -10,6 +10,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class RecordingSession {
   final String taskId;
@@ -101,12 +103,48 @@ class RecordingSession {
 
   /// 前台服务计数（与唤醒锁联动，多个录制只启动一个前台服务）
   static int _foregroundServiceRefCount = 0;
+  /// 标记前台服务是否实际启动成功（用于权限不足时跳过停止逻辑）
+  static bool _foregroundServiceActuallyStarted = false;
+
+  /// 创建前台服务所需的通知渠道（某些 ROM 不会自动创建）
+  static Future<void> _ensureForegroundNotificationChannel() async {
+    if (!Platform.isAndroid) return;
+    try {
+      const channel = AndroidNotificationChannel(
+        'simple_recorder_channel',
+        '录制服务',
+        description: 'Simple Recorder 前台录制服务通知',
+        importance: Importance.low,
+      );
+      final plugin = FlutterLocalNotificationsPlugin();
+      await plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    } catch (e) {
+      Log.logPrint("创建前台服务通知渠道失败: $e");
+    }
+  }
 
   /// 启动前台服务（首次录制时拉起来）
   static Future<void> _acquireForegroundService() async {
     if (_foregroundServiceRefCount == 0) {
+      // Android 13+ (API 33) 需要 POST_NOTIFICATIONS 权限才能 startForeground
+      if (Platform.isAndroid) {
+        final status = await Permission.notification.request();
+        if (!status.isGranted) {
+          Log.logPrint("通知权限未授予，跳过前台服务启动（后台录制可能被系统杀死）");
+          _foregroundServiceRefCount++;
+          return;
+        }
+      }
+
+      // 显式创建通知渠道，避免某些 ROM 上 flutter_background_service 内部创建失败
+      await _ensureForegroundNotificationChannel();
+
       final service = FlutterBackgroundService();
       await service.startService();
+      _foregroundServiceActuallyStarted = true;
       Log.logPrint("前台服务已启动");
     }
     _foregroundServiceRefCount++;
@@ -117,14 +155,18 @@ class RecordingSession {
     _foregroundServiceRefCount--;
     if (_foregroundServiceRefCount <= 0) {
       _foregroundServiceRefCount = 0;
-      final service = FlutterBackgroundService();
-      service.invoke('stopService');
-      Log.logPrint("前台服务已停止");
+      if (_foregroundServiceActuallyStarted) {
+        final service = FlutterBackgroundService();
+        service.invoke('stopService');
+        _foregroundServiceActuallyStarted = false;
+        Log.logPrint("前台服务已停止");
+      }
     }
   }
 
   Future<void> start() async {
     if (isRecording.value) return;
+    _finished = false; // 重置完成标志，允许 session 复用
 
     // 录制开始时获取唤醒锁，保持屏幕常亮 + 阻止 CPU 休眠
     await _acquireWakelock();
@@ -264,7 +306,11 @@ class RecordingSession {
     Log.logPrint("录音重连: 第$_retries/$maxRetries 次，${delay.inSeconds}秒后重试");
 
     Future.delayed(delay, () async {
-      if (!isRecording.value) return;
+      if (!isRecording.value) {
+        // 用户已在重试窗口内取消了录制，完整清理
+        _onFinished();
+        return;
+      }
       await _onRefreshPlayUrl?.call();
       await _startFFmpegSession(playUrl);
     });
@@ -298,6 +344,7 @@ class RecordingSession {
   }
 
   void _doCancelFFmpeg() {
+    bool hadActiveSession = _sessionId != null;
     if (_sessionId != null) {
       FFmpegKit.cancel(_sessionId);
       _sessionId = null;
@@ -305,9 +352,18 @@ class RecordingSession {
     _timer?.cancel();
     _timer = null;
     isRecording.value = false;
+    // 无活跃 FFmpeg 会话（如重试延迟窗口中），
+    // 回调不会触发，需手动完成清理
+    if (!hadActiveSession) {
+      _onFinished();
+    }
   }
 
+  bool _finished = false;
+
   Future<void> _onFinished() async {
+    if (_finished) return; // 防止重入（retry + cancel 双路径可能同时触发）
+    _finished = true;
     if (_startTime != null && _outputPath.isNotEmpty && !_discardRequested) {
       await _renameFileWithEndTime();
       // 成功完成录音后，自动解包 TS → M4A

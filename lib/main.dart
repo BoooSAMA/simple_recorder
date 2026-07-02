@@ -20,6 +20,7 @@ import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:simple_recorder/services/live_notification_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -111,8 +112,35 @@ void _requestPermissions() {
   });
 }
 
+/// 创建前台服务所需的系统通知渠道
+/// flutter_background_service 的自定义渠道 ID 时不会自动创建渠道（其固有 bug），
+/// 需要预先创建，否则 startForeground 会因渠道不存在而崩溃
+Future<void> _ensureForegroundNotificationChannel() async {
+  if (!Platform.isAndroid) return;
+  try {
+    const channel = AndroidNotificationChannel(
+      'simple_recorder_channel',
+      '录制服务',
+      description: 'Simple Recorder 前台录制服务通知',
+      importance: Importance.low,
+    );
+    final plugin = FlutterLocalNotificationsPlugin();
+    await plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  } catch (e) {
+    Log.logPrint("创建前台服务通知渠道失败: $e");
+  }
+}
+
 /// 初始化前台录制服务，接收来自 Flutter 的消息并展示通知
 Future<void> _initForegroundService() async {
+  // 必须先创建通知渠道，因为 flutter_background_service
+  // 在 configure() 中就会调用 startForeground，
+  // 且自定义渠道 ID 时它不会自动创建渠道
+  await _ensureForegroundNotificationChannel();
+
   final service = FlutterBackgroundService();
 
   await service.configure(
