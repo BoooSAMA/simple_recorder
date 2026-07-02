@@ -20,8 +20,9 @@ class RecordingsPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const BackButton(),
-            GestureDetector(
+            InkWell(
               onTap: () => Get.offNamed(RoutePath.kTsUnpack),
+              borderRadius: BorderRadius.circular(20),
               child: const SizedBox(
                 width: 40,
                 height: 40,
@@ -78,8 +79,9 @@ class RecordingsPage extends StatelessWidget {
             );
           }),
           // 刷新
-          GestureDetector(
+          InkWell(
             onTap: () => controller.scanDirectory(),
+            borderRadius: BorderRadius.circular(20),
             child: const SizedBox(
               width: 40,
               height: 40,

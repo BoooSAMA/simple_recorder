@@ -17,8 +17,9 @@ class TsUnpackPage extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const BackButton(),
-            GestureDetector(
+            InkWell(
               onTap: () => Get.offNamed(RoutePath.kRecordings),
+              borderRadius: BorderRadius.circular(20),
               child: const SizedBox(
                 width: 40,
                 height: 40,
@@ -29,8 +30,9 @@ class TsUnpackPage extends StatelessWidget {
         ),
         title: const Text("TS 解包工具"),
         actions: [
-          GestureDetector(
+          InkWell(
             onTap: () => controller.scanDirectory(),
+            borderRadius: BorderRadius.circular(20),
             child: const SizedBox(
               width: 40,
               height: 40,
