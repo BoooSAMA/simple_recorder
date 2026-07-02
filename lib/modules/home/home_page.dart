@@ -17,6 +17,28 @@ class HomePage extends StatelessWidget {
     var controller = Get.put(HomeController());
     return Scaffold(
       appBar: AppBar(
+        title: Obx(() {
+          final count = RecordingManager.instance.activeCount.value;
+          if (count == 0) return const SizedBox.shrink();
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                "$count / 20",
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+            ],
+          );
+        }),
         leading: Obx(() {
           if (controller.isLoading.value) {
             final progress = controller.loadProgress.value;

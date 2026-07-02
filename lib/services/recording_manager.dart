@@ -11,7 +11,7 @@ class RecordingManager extends GetxService {
   final RxList<RecordingSession> activeSessions = RxList<RecordingSession>();
   final RxInt activeCount = 0.obs;
 
-  int get maxConcurrent => 10;
+  int get maxConcurrent => 20;
 
   bool canStartNew() {
     return activeSessions.length < maxConcurrent;
