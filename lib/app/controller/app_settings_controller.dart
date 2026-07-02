@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/constant.dart';
+import 'package:simple_recorder/app/event_bus.dart';
 import 'package:simple_recorder/services/local_storage_service.dart';
 
 class AppSettingsController extends GetxController {
@@ -15,6 +17,7 @@ class AppSettingsController extends GetxController {
   final maxConcurrentRecordings = 3.obs;
   final autoReconnect = true.obs;
   final autoSaveToFolder = true.obs;
+  final liveNotificationEnabled = true.obs;
 
   /// 置顶的直播间 ID 集合
   var pinnedFollowIds = <String>{}.obs;
@@ -43,6 +46,8 @@ class AppSettingsController extends GetxController {
         .getValue("auto_reconnect", true);
     autoSaveToFolder.value = LocalStorageService.instance
         .getValue("auto_save_to_folder", true);
+    liveNotificationEnabled.value = LocalStorageService.instance
+        .getValue("live_notification_enabled", true);
   }
 
   /// 加载置顶直播间 ID 列表
@@ -59,6 +64,7 @@ class AppSettingsController extends GetxController {
         pinnedFollowIds.value = {};
       }
     }
+    EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
   }
 
   /// 保存置顶直播间 ID 列表
@@ -79,6 +85,7 @@ class AppSettingsController extends GetxController {
       pinnedFollowIds.add(id);
     }
     await savePinnedFollowIds();
+    EventBus.instance.emit(Constant.kPinnedFollowChanged, id);
   }
 
   void setThemeMode(int mode) {
@@ -115,5 +122,11 @@ class AppSettingsController extends GetxController {
   void setAutoSaveToFolder(bool value) {
     autoSaveToFolder.value = value;
     LocalStorageService.instance.setValue("auto_save_to_folder", value);
+  }
+
+  void setLiveNotificationEnabled(bool value) {
+    liveNotificationEnabled.value = value;
+    LocalStorageService.instance.setValue("live_notification_enabled", value);
+    EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
   }
 }

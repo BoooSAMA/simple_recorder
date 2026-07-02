@@ -12,8 +12,9 @@ import 'package:simple_recorder/services/db_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_recorder/services/recording_service.dart';
 import 'package:simple_recorder/services/follow_export_service.dart';
+import 'package:simple_recorder/services/live_notification_service.dart';
 
-class HomeController extends GetxController {
+class HomeController extends GetxController with WidgetsBindingObserver {
   final followList = <FollowUser>[].obs;
   final liveList = <FollowUser>[].obs;
   final notLiveList = <FollowUser>[].obs;
@@ -30,6 +31,9 @@ class HomeController extends GetxController {
 
   StreamSubscription<dynamic>? _followSubscription;
   bool _initialCheckDone = false;
+  Timer? _livePoller;
+  StreamSubscription<dynamic>? _pinSubscription;
+  bool _firstPinCheckDone = false;
 
   /// 当前显示列表中的置顶直播间数量
   int get pinnedCount {
@@ -49,6 +53,12 @@ class HomeController extends GetxController {
         EventBus.instance.listen(Constant.kUpdateFollow, (_) {
       loadFollowList();
     });
+    _syncPoller();
+    _pinSubscription =
+        EventBus.instance.listen(Constant.kPinnedFollowChanged, (_) {
+      _syncPoller();
+    });
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
@@ -64,7 +74,29 @@ class HomeController extends GetxController {
   @override
   void onClose() {
     _followSubscription?.cancel();
+    _livePoller?.cancel();
+    _pinSubscription?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.onClose();
+  }
+
+  void _syncPoller() {
+    final settings = AppSettingsController.instance;
+    final hasPinned = settings.pinnedFollowIds.isNotEmpty;
+    final shouldRun = settings.liveNotificationEnabled.value && hasPinned;
+
+    if (shouldRun && _livePoller == null) {
+      _firstPinCheckDone = false;
+      _livePoller = Timer.periodic(
+        const Duration(minutes: 3),
+        (_) => _checkPinnedLiveStatus(notify: true),
+      );
+      _checkPinnedLiveStatus(notify: false);
+    } else if (!shouldRun && _livePoller != null) {
+      _livePoller?.cancel();
+      _livePoller = null;
+      _firstPinCheckDone = false;
+    }
   }
 
   void loadFollowList() {
@@ -124,6 +156,40 @@ class HomeController extends GetxController {
     });
   }
 
+  Future<void> _checkPinnedLiveStatus({bool notify = false}) async {
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
+    if (pinnedIds.isEmpty) return;
+
+    final settings = AppSettingsController.instance;
+    if (!settings.liveNotificationEnabled.value && notify) return;
+
+    for (final user in followList) {
+      if (!pinnedIds.contains(user.id)) continue;
+
+      try {
+        var site = Sites.getSite(user.siteId);
+        if (site == null) continue;
+
+        final wasLive = user.liveStatus.value == 2;
+        final isLive =
+            await site.liveSite.getLiveStatus(roomId: user.roomId);
+        user.liveStatus.value = isLive ? 2 : 1;
+
+        if (!wasLive && isLive && notify && _firstPinCheckDone) {
+          await LiveNotificationService.instance.notifyLiveStart(user);
+        }
+        if (!isLive) {
+          LiveNotificationService.instance.clearNotified(user.id);
+        }
+      } catch (e) {
+        Log.logPrint("检测 pin 主播状态失败: ${user.userName} - $e");
+        user.liveStatus.value = 0;
+      }
+    }
+    _firstPinCheckDone = true;
+    filterData();
+  }
+
   void setFilterMode(int mode) {
     filterMode.value = mode;
     filterData();
@@ -178,6 +244,8 @@ class HomeController extends GetxController {
       }));
     }
 
+    _checkPinnedLiveStatus(notify: true);
+
     filterData();
     isLoading.value = false;
   }
@@ -202,6 +270,19 @@ class HomeController extends GetxController {
       filteredList.value = live;
     } else if (filterMode.value == 2) {
       filteredList.value = notLive;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _syncPoller();
+      _checkPinnedLiveStatus(notify: true);
+    } else if (state == AppLifecycleState.paused) {
+      if (RecordingManager.instance.activeSessions.isEmpty) {
+        _livePoller?.cancel();
+        _livePoller = null;
+      }
     }
   }
 

@@ -19,6 +19,7 @@ import 'package:simple_recorder/services/local_storage_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:simple_recorder/services/live_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,7 @@ void main() async {
 
   // 新用户首启：请求通知权限和存储权限
   _requestPermissions();
+  LiveNotificationService.instance.init();
 
   // 扫描并标记异常中断的 TS 文件
   _markInterruptedFiles();
@@ -102,6 +104,9 @@ void _requestPermissions() {
     // 请求管理所有文件权限 (Android 11+ 必需)
     if (await Permission.manageExternalStorage.isDenied) {
       await Permission.manageExternalStorage.request();
+    }
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
     }
   });
 }
