@@ -244,8 +244,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       }));
     }
 
-    _checkPinnedLiveStatus(notify: true);
-
     filterData();
     isLoading.value = false;
   }
