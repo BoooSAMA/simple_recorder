@@ -21,6 +21,7 @@
 - **断线自动重连** — 录制中断自动重试（最多 3 次），保障录制完整性
 - **FFmpeg TS 格式封装** — 录制时暂存为 TS 片段，停止后自动合成为 M4A 文件
 - **后台持续录制** — 支持 app 切到后台后持续录制
+- **前台服务保活** — Android 录制时启动前台服务通知，防止系统杀死后台进程，解决熄屏后录制中断问题
 
 ### 📡 直播状态监测
 
@@ -74,6 +75,9 @@
 - **响应式录制状态** — Obx 订阅 `activeSessions`，录制开始/停止即时刷新
 - **一致 UI 约束** — `ConstrainedBox` 限制长文本溢出，设置页不崩溃
 - **零编译警告** — `flutter analyze` 保持零 error/warning
+- **减少 FFmpeg 日志开销** — 录制期间不实时回调日志到 Dart 层，降低跨语言调用
+- **降低文件轮询频率** — 文件大小从每秒轮询改为每 5 秒，减少 80% 系统调用
+- **重试退避延迟** — 断线重连延迟从固定 2s 改为递增 (2s/4s/6s)，降低耗电
 
 ## 初期主要功能清单
 
@@ -85,6 +89,9 @@
 - [x] 刷新直播间状态功能（含进度百分比）
 - [x] 断线自动拼接/重连（最多 3 次）
 - [x] 保证后台运行
+- [x] Android 前台服务保活（熄屏不中断）
+- [x] 录制性能优化（日志裁剪、轮询降频、重试退避）
+- [x] 修复网络中断后无法重新录制 bug
 - [x] 简化报错提示
 - [x] 按主播名自动创建文件夹保存
 - [x] 分组筛选（直播中/未开播/全部）
@@ -111,7 +118,7 @@
 ```
 simple_recorder/
 ├── lib/
-│   ├── main.dart                         # 入口，初始化 Hive/GetX/Permissions
+│   ├── main.dart                         # 入口，初始化 Hive/GetX/Permissions/ForegroundService
 │   ├── app/
 │   │   ├── app_style.dart                # Material3 light/dark 主题
 │   │   ├── constant.dart                 # 常量定义
@@ -142,7 +149,7 @@ simple_recorder/
 │   │   └── route_path.dart
 │   └── widgets/
 │       └── settings/                     # 设置页组件 (card, switch, action)
-├── android/app/src/main/.../MainActivity.kt  # Android MethodChannel
+├── android/app/src/main/.../MainActivity.kt     # Android MethodChannel (openFolder + BackgroundService)
 └── README.md
 ```
 
@@ -183,9 +190,11 @@ flutter analyze
 
 - `simple_live_core` — 源自 [dart_simple_live](https://github.com/xiaoyaocz/dart_simple_live)，提供多平台直播接口
 - `ffmpeg_kit_flutter` — 基于 FFmpeg 的音频录制
+- `flutter_background_service` — Android 前台服务保活，防止熄屏后录制被系统杀死
 - `hive` — 本地数据持久化
 - `get` — 状态管理与路由
 - `permission_handler` — 运行时权限管理
+- `wakelock_plus` — 屏幕常亮 / CPU 休眠控制
 
 ## UI 约定
 
