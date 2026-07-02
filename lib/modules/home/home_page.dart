@@ -17,7 +17,6 @@ class HomePage extends StatelessWidget {
     var controller = Get.put(HomeController());
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Simple Recorder"),
         leading: Obx(() {
           if (controller.isLoading.value) {
             final progress = controller.loadProgress.value;
