@@ -380,6 +380,104 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// 一键录制所有正在直播的置顶主播（顺序启动，避免高并发）
+  Future<void> startAllPinnedRecordings() async {
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
+    if (pinnedIds.isEmpty) return;
+
+    final pinLives = followList
+        .where((u) => pinnedIds.contains(u.id) && u.liveStatus.value == 2)
+        .toList();
+
+    if (pinLives.isEmpty) {
+      Get.snackbar("提示", "没有正在直播的置顶主播",
+          snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    isLoading.value = true;
+    var started = 0;
+    var skipped = 0;
+
+    for (var i = 0; i < pinLives.length; i++) {
+      loadProgress.value = (i + 1) / pinLives.length;
+      final user = pinLives[i];
+
+      // 跳过已在录制中的
+      var existing = RecordingManager.instance.getSession(user.id);
+      if (existing != null && existing.isRecording.value) {
+        started++;
+        continue;
+      }
+
+      var site = Sites.getSite(user.siteId);
+      if (site == null) {
+        Log.logPrint("一键录制跳过: 不支持的平台 ${user.siteId}");
+        skipped++;
+        continue;
+      }
+
+      try {
+        var newSession = RecordingSession(
+          taskId: user.id,
+          roomId: user.roomId,
+          siteId: user.siteId,
+          userName: user.userName,
+        );
+
+        var detail = await site.liveSite.getRoomDetail(roomId: user.roomId);
+        var qualites = await site.liveSite.getPlayQualites(detail: detail);
+        if (qualites.isEmpty) {
+          Log.logPrint("一键录制跳过(${user.userName}): 无清晰度选项");
+          skipped++;
+          continue;
+        }
+
+        var playUrl = await site.liveSite.getPlayUrls(
+          detail: detail,
+          quality: qualites.first,
+        );
+        if (playUrl.urls.isEmpty) {
+          Log.logPrint("一键录制跳过(${user.userName}): 无播放地址");
+          skipped++;
+          continue;
+        }
+
+        newSession.configure(
+          getPlayUrl: () => playUrl.urls.first,
+          onRefreshPlayUrl: () async {
+            var newDetail =
+                await site.liveSite.getRoomDetail(roomId: user.roomId);
+            var newQualites =
+                await site.liveSite.getPlayQualites(detail: newDetail);
+            if (newQualites.isEmpty) return;
+            var newUrl = await site.liveSite.getPlayUrls(
+              detail: newDetail,
+              quality: newQualites.first,
+            );
+            if (newUrl.urls.isNotEmpty) {
+              playUrl.urls.first = newUrl.urls.first;
+            }
+          },
+          getHeaders: () => playUrl.headers,
+        );
+
+        await RecordingManager.instance.startRecording(newSession);
+        started++;
+      } catch (e) {
+        Log.logPrint("一键录制失败(${user.userName}): $e");
+        skipped++;
+      }
+    }
+
+    isLoading.value = false;
+    loadProgress.value = 0;
+
+    Get.snackbar("一键录制完成",
+        "成功启动: $started  |  跳过/失败: $skipped",
+        snackPosition: SnackPosition.BOTTOM);
+  }
+
   /// 停止录制（保存文件）
   void stopRecording(FollowUser user) async {
     var fileInfo = await RecordingManager.instance.stopRecording(user.id);

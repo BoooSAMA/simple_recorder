@@ -74,6 +74,26 @@ class HomePage extends StatelessWidget {
           );
         }),
         actions: [
+          Obx(() {
+            final count = controller.pinnedLiveCount;
+            if (count == 0 || controller.isLoading.value) {
+              return const SizedBox.shrink();
+            }
+            return GestureDetector(
+              onTap: () => controller.startAllPinnedRecordings(),
+              child: Tooltip(
+                message: "一键录制所有置顶直播 ($count)",
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Icon(Icons.radio_button_checked, size: 22),
+                  ),
+                ),
+              ),
+            );
+          }),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
