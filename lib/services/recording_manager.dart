@@ -26,13 +26,20 @@ class RecordingManager extends GetxService {
   }
 
   Future<void> startRecording(RecordingSession session) async {
-    if (!canStartNew()) {
-      Log.logPrint("已达到最大并行录制数");
-      return;
+    // 检查该 taskId 是否已有活跃的录制 session
+    var existing = getSession(session.taskId);
+    if (existing != null) {
+      if (existing.isRecording.value) {
+        Log.logPrint("该任务已在录制中: ${session.taskId}");
+        return;
+      }
+      // 旧 session 已自动停止（如网络中断），清理它
+      Log.logPrint("清理已停止的旧 session: ${session.taskId}");
+      activeSessions.remove(existing);
     }
 
-    if (getSession(session.taskId) != null) {
-      Log.logPrint("该任务已在录制中: ${session.taskId}");
+    if (!canStartNew()) {
+      Log.logPrint("已达到最大并行录制数");
       return;
     }
 
