@@ -101,7 +101,217 @@ class FixedDouyinSite extends DouyinSite {
       );
       items.add(roomItem);
     }
+
+    // 如果关键词是纯数字（疑似房间号/WebRid），再通过 getRoomDetail 精确查找
+    // 抖音搜索API只返回正在直播的直播间，且不支持按房间号搜索。
+    // 通过 getRoomDetail 可以搜到该主播（不管是否在直播）。
+    var numMatch = RegExp(r'^\d{6,}$').firstMatch(keyword.trim());
+    if (numMatch != null) {
+      var roomId = numMatch.group(0)!;
+      try {
+        var detail = await getRoomDetail(roomId: roomId);
+        if (detail.roomId.isNotEmpty &&
+            !items.any((i) => i.roomId == detail.roomId)) {
+          items.insert(
+            0,
+            LiveRoomItem(
+              roomId: detail.roomId,
+              title: detail.title.isNotEmpty ? detail.title : "房间号: $roomId",
+              cover: detail.cover,
+              userName: detail.userName,
+              online: detail.online,
+            ),
+          );
+        }
+      } catch (_) {
+        // getRoomDetail 失败不影响正常搜索结果
+      }
+    }
+
+    // 【新增】直播搜索为空时，尝试通用搜索 fallback
+    // 抖音直播搜索只返回当前正在直播的直播间。通用搜索可以搜到
+    // 主播资料页（无论是否在直播），弥补直播搜索的盲区。
+    if (items.isEmpty) {
+      try {
+        var generalItems = await _searchGeneral(keyword);
+        for (var gi in generalItems) {
+          if (!items.any((i) => i.roomId == gi.roomId)) {
+            items.add(gi);
+          }
+        }
+      } catch (_) {
+        // 通用搜索失败不影响正常返回
+      }
+    }
+
     return LiveSearchRoomResult(hasMore: items.length >= 10, items: items);
+  }
+
+  /// 通用搜索 fallback — 调用抖音综合搜索 API
+  /// 当直播搜索返回空时使用，可以搜到未开播主播的资料页。
+  /// 如果主播的资料页中带有直播间 ID（room_id/web_rid），
+  /// 则返回其为 LiveRoomItem，方便用户收藏。
+  Future<List<LiveRoomItem>> _searchGeneral(String keyword) async {
+    String serverUrl = "https://www.douyin.com/aweme/v1/web/general/search/single/";
+    var uri = Uri.parse(serverUrl).replace(
+      scheme: "https",
+      port: 443,
+      queryParameters: {
+        "device_platform": "webapp",
+        "aid": "6383",
+        "channel": "channel_pc_web",
+        "keyword": keyword,
+        "search_channel": "aweme_general",
+        "search_source": "normal_search",
+        "query_correct_type": "1",
+        "is_filter_search": "0",
+        "offset": "0",
+        "count": "15",
+        "pc_client_type": "1",
+        "version_code": "170400",
+        "version_name": "17.4.0",
+        "cookie_enabled": "true",
+        "screen_width": "1980",
+        "screen_height": "1080",
+        "browser_language": "zh-CN",
+        "browser_platform": "Win32",
+        "browser_name": "Edge",
+        "browser_version": "125.0.0.0",
+        "browser_online": "true",
+        "engine_name": "Blink",
+        "engine_version": "125.0.0.0",
+        "os_name": "Windows",
+        "os_version": "10",
+        "cpu_core_num": "12",
+        "device_memory": "8",
+        "platform": "PC",
+        "downlink": "10",
+        "effective_type": "4g",
+        "round_trip_time": "100",
+      },
+    );
+
+    var requestUrl = DouyinSign.getAbogusUrl(uri.toString(), DouyinSite.kDefaultUserAgent);
+    var searchHeaders = Map<String, dynamic>.from(await getRequestHeaders());
+    searchHeaders.addAll({
+      'accept': 'application/json, text/plain, */*',
+      'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'priority': 'u=1, i',
+      'referer':
+          'https://www.douyin.com/search/${Uri.encodeComponent(keyword)}?type=general',
+      'sec-ch-ua':
+          '"Microsoft Edge";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
+    });
+
+    var result = await hc.HttpClient.instance.getJson(
+      requestUrl,
+      queryParameters: {},
+      header: searchHeaders,
+    );
+
+    if (result is! Map || result["status_code"] != 0) {
+      return [];
+    }
+
+    var items = <LiveRoomItem>[];
+    var dataList = result["data"];
+    if (dataList is! List) return [];
+
+    for (var entry in dataList) {
+      if (entry is! Map) continue;
+      try {
+        // 尝试多种可能的用户信息结构
+        LiveRoomItem? roomItem;
+
+        // 结构 1: { "type": 2, "user": { ... } }
+        if (entry["user"] is Map) {
+          roomItem = _parseUserSearchEntry(entry["user"]);
+        }
+        // 结构 2: { "type": 2, "user_info": { ... } }
+        else if (entry["user_info"] is Map) {
+          roomItem = _parseUserSearchEntry(entry["user_info"]);
+        }
+        // 结构 3: { "type": 2, "user_list": [...] }
+        else if (entry["user_list"] is List) {
+          for (var u in entry["user_list"]) {
+            if (u is! Map) continue;
+            var userData = u;
+            if (userData["user_info"] is Map) {
+              userData = userData["user_info"] as Map<dynamic, dynamic>;
+            }
+            var ri = _parseUserSearchEntry(userData);
+            if (ri != null) items.add(ri);
+          }
+        }
+
+        if (roomItem != null) items.add(roomItem);
+      } catch (_) {
+        // 单条解析失败跳过
+      }
+    }
+
+    return items;
+  }
+
+  /// 从通用搜索的用户条目中提取 LiveRoomItem
+  /// 抖音用户的资料页中可能包含 room_id（临时房间号）或
+  /// web_rid（永久房间号）。只要拿到任意一个即可。
+  LiveRoomItem? _parseUserSearchEntry(Map data) {
+    // 尝试提取 room_id / web_rid
+    var roomId = data["room_id"]?.toString() ?? "";
+    var webRid = data["web_rid"]?.toString() ?? "";
+
+    // 部分响应有嵌套 room 对象
+    if (roomId.isEmpty && data["room"] is Map) {
+      roomId = (data["room"]["id_str"] ?? data["room"]["id"] ?? "").toString();
+    }
+    if (webRid.isEmpty && data["room"] is Map) {
+      webRid = (data["room"]["web_rid"] ?? "").toString();
+    }
+
+    var finalRoomId = webRid.isNotEmpty ? webRid : roomId;
+    if (finalRoomId.isEmpty) return null;
+
+    // 提取昵称
+    var nickname = data["nickname"]?.toString() ?? "";
+
+    // 提取头像（作为封面）
+    var avatar = data["avatar"]?.toString() ?? "";
+    if (avatar.isEmpty && data["avatar_thumb"] is Map) {
+      var list = data["avatar_thumb"]["url_list"];
+      if (list is List && list.isNotEmpty) {
+        avatar = list[0].toString();
+      }
+    }
+    if (avatar.isEmpty && data["avatar_larger"] is Map) {
+      var list = data["avatar_larger"]["url_list"];
+      if (list is List && list.isNotEmpty) {
+        avatar = list[0].toString();
+      }
+    }
+    // 兜底：cover 字段
+    if (avatar.isEmpty) {
+      avatar = data["cover"]?.toString() ?? "";
+    }
+
+    // 观众数：可能不在用户资料中
+    var online = 0;
+    try {
+      online = int.tryParse(data["room_view_stats"]?["display_value"]?.toString() ?? "") ?? 0;
+    } catch (_) {}
+
+    return LiveRoomItem(
+      roomId: finalRoomId,
+      title: "房间号: $finalRoomId",
+      cover: avatar,
+      userName: nickname,
+      online: online,
+    );
   }
 }
 
@@ -235,13 +445,21 @@ class MaoerfmSite implements LiveSite {
     }
 
     var room = json['info']['room'] as Map<String, dynamic>;
-    var channel = room['channel'] as Map<String, dynamic>? ?? {};
-    var hlsUrl = channel['hls_pull_url']?.toString() ?? '';
-    var flvUrl = channel['flv_pull_url']?.toString() ?? '';
-
     var urls = <String>[];
-    if (hlsUrl.isNotEmpty) urls.add(hlsUrl);
-    if (flvUrl.isNotEmpty) urls.add(flvUrl);
+
+    // channel 可能是字符串（直接 URL），也可能是 dict {hls_pull_url, flv_pull_url}
+    var channel = room['channel'];
+    if (channel is String) {
+      urls.add(channel);
+    } else if (channel is Map) {
+      var hlsUrl = channel['hls_pull_url']?.toString() ?? '';
+      var flvUrl = channel['flv_pull_url']?.toString() ?? '';
+
+      // FLV 优先：HLS 流在部分 CDN 上返回 403 Forbidden
+      // 参考 DouyinLiveRecorder 项目优化方案
+      if (flvUrl.isNotEmpty) urls.add(flvUrl);
+      if (hlsUrl.isNotEmpty) urls.add(hlsUrl);
+    }
 
     if (urls.isEmpty) {
       throw Exception('获取播放地址失败');

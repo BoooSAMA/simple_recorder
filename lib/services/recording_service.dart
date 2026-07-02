@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
@@ -75,12 +77,65 @@ class RecordingSession {
     return dir.path;
   }
 
+  /// 唤醒锁计数，多个录制同时开始时只需获取一次
+  static int _wakelockRefCount = 0;
+
+  /// 获取唤醒锁（计数引用，仅在首次真正获取）
+  static Future<void> _acquireWakelock() async {
+    if (_wakelockRefCount == 0) {
+      await WakelockPlus.enable();
+      Log.logPrint("唤醒锁已获取（屏幕常亮 + 阻止 CPU 休眠）");
+    }
+    _wakelockRefCount++;
+  }
+
+  /// 释放唤醒锁（计数引用，仅在最后一个录制结束时真正释放）
+  static Future<void> _releaseWakelock() async {
+    _wakelockRefCount--;
+    if (_wakelockRefCount <= 0) {
+      _wakelockRefCount = 0;
+      await WakelockPlus.disable();
+      Log.logPrint("唤醒锁已释放");
+    }
+  }
+
+  /// 前台服务计数（与唤醒锁联动，多个录制只启动一个前台服务）
+  static int _foregroundServiceRefCount = 0;
+
+  /// 启动前台服务（首次录制时拉起来）
+  static Future<void> _acquireForegroundService() async {
+    if (_foregroundServiceRefCount == 0) {
+      final service = FlutterBackgroundService();
+      await service.startService();
+      Log.logPrint("前台服务已启动");
+    }
+    _foregroundServiceRefCount++;
+  }
+
+  /// 停止前台服务（最后一次录制结束时停掉）
+  static Future<void> _releaseForegroundService() async {
+    _foregroundServiceRefCount--;
+    if (_foregroundServiceRefCount <= 0) {
+      _foregroundServiceRefCount = 0;
+      final service = FlutterBackgroundService();
+      service.invoke('stopService');
+      Log.logPrint("前台服务已停止");
+    }
+  }
+
   Future<void> start() async {
     if (isRecording.value) return;
+
+    // 录制开始时获取唤醒锁，保持屏幕常亮 + 阻止 CPU 休眠
+    await _acquireWakelock();
+    // 启动前台服务，防止系统杀死后台录制进程
+    await _acquireForegroundService();
 
     var playUrl = _getPlayUrl?.call() ?? "";
     if (playUrl.isEmpty) {
       lastError.value = "没有可用的播放地址";
+      _releaseWakelock();
+      _releaseForegroundService();
       return;
     }
 
@@ -104,6 +159,8 @@ class RecordingSession {
     _discardRequested = false;
     _retries = 0;
 
+    // 优化：文件大小每 5 秒轮询一次，时长每秒更新
+    var sizeTickCounter = 0;
     await _startFFmpegSession(playUrl);
 
     isRecording.value = true;
@@ -115,7 +172,11 @@ class RecordingSession {
       var m = (_seconds ~/ 60).toString().padLeft(2, '0');
       var s = (_seconds % 60).toString().padLeft(2, '0');
       duration.value = "$m:$s";
-      fileSize.value = _formatFileSize(_outputPath);
+      // 文件大小每 5 秒轮询一次，减少系统调用
+      if (sizeTickCounter % 5 == 0) {
+        fileSize.value = _formatFileSize(_outputPath);
+      }
+      sizeTickCounter++;
     });
   }
 
@@ -169,15 +230,22 @@ class RecordingSession {
           }
           await _onFinished();
         } else {
+          // 获取失败日志（仅在出错时读取）
           var output = await session.getOutput();
-          lastError.value = output ?? "未知错误";
+          // 只记录输出中的错误行（error/warning），避免保存重复的长日志
+          if (output != null && output.length < 2000) {
+            lastError.value = output;
+          } else if (output != null) {
+            var errorLines = output.split('\n').where((l) => l.contains('Error') || l.contains('error')).join('\n');
+            lastError.value = errorLines.isNotEmpty ? errorLines : output.substring(0, 1500);
+          } else {
+            lastError.value = "未知错误";
+          }
           Log.logPrint("录音失败: ${lastError.value}");
           _scheduleRetry(playUrl);
         }
       },
-      (log) {
-        Log.logPrint("FFmpeg: ${log.getMessage()}");
-      },
+      // 不传 logCallback，避免每条 FFmpeg 信息都回调到 Dart 层
     );
     _sessionId = session.getSessionId();
   }
@@ -191,9 +259,11 @@ class RecordingSession {
     }
     _retries++;
     retryCount.value = _retries;
-    Log.logPrint("录音重连: 第$_retries/$maxRetries 次，2秒后重试");
+    // 乘性退避：第1次2秒，第2次4秒，第3次6秒（上限）
+    var delay = Duration(seconds: 2 * _retries);
+    Log.logPrint("录音重连: 第$_retries/$maxRetries 次，${delay.inSeconds}秒后重试");
 
-    Future.delayed(const Duration(seconds: 2), () async {
+    Future.delayed(delay, () async {
       if (!isRecording.value) return;
       await _onRefreshPlayUrl?.call();
       await _startFFmpegSession(playUrl);
@@ -222,6 +292,8 @@ class RecordingSession {
       _sessionId = null;
     }
     isRecording.value = false;
+    _releaseWakelock();
+    _releaseForegroundService();
     _finishCompleter?.complete();
   }
 
@@ -248,6 +320,9 @@ class RecordingSession {
     _timer = null;
     isRecording.value = false;
     _sessionId = null;
+    // 录制结束时释放唤醒锁和前台服务
+    _releaseWakelock();
+    _releaseForegroundService();
     _finishCompleter?.complete();
   }
 

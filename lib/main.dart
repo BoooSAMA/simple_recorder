@@ -18,6 +18,7 @@ import 'package:simple_recorder/services/db_service.dart';
 import 'package:simple_recorder/services/local_storage_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_live_core/simple_live_core.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +46,13 @@ void main() async {
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: Colors.transparent,
   ));
+
+  // 初始化前台服务，防止系统杀死后台录制进程
+  try {
+    await _initForegroundService();
+  } catch (e) {
+    Log.logPrint("前台服务初始化失败（可能在不支持的平台上）: $e");
+  }
 
   runApp(const MyApp());
 }
@@ -96,6 +104,52 @@ void _requestPermissions() {
       await Permission.manageExternalStorage.request();
     }
   });
+}
+
+/// 初始化前台录制服务，接收来自 Flutter 的消息并展示通知
+Future<void> _initForegroundService() async {
+  final service = FlutterBackgroundService();
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: _onForegroundServiceStart,
+      autoStart: false,
+      isForegroundMode: true,
+      initialNotificationContent: "Simple Recorder 录制服务就绪",
+      initialNotificationTitle: "Simple Recorder",
+      notificationChannelId: "simple_recorder_channel",
+    ),
+    iosConfiguration: IosConfiguration(
+      autoStart: false,
+      onForeground: _onForegroundServiceStart,
+      onBackground: _onForegroundServiceStart,
+    ),
+  );
+}
+
+@pragma('vm:entry-point')
+Future<bool> _onForegroundServiceStart(ServiceInstance service) async {
+  if (service is AndroidServiceInstance) {
+    service.setAsForegroundService();
+    service.setForegroundNotificationInfo(
+      title: "Simple Recorder",
+      content: "录制服务就绪",
+    );
+
+    // 允许 Flutter 层通过 sendData 来更新通知内容
+    service.on("update").listen((event) {
+      if (event != null) {
+        final data = event;
+        if (data.containsKey("title")) {
+          service.setForegroundNotificationInfo(
+            title: data["title"].toString(),
+            content: data["content"].toString(),
+          );
+        }
+      }
+    });
+  }
+  return true;
 }
 
 void initCoreLog() {
