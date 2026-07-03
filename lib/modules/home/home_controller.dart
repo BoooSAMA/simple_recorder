@@ -130,10 +130,13 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         (_) => _checkPinnedLiveStatus(notify: true),
       );
       _checkPinnedLiveStatus(notify: false);
+      // 保活：防止后台进程被杀死
+      LiveNotificationService.instance.acquireKeepAlive();
     } else if (!shouldRun && _livePoller != null) {
       _livePoller?.cancel();
       _livePoller = null;
       _firstPinCheckDone = false;
+      LiveNotificationService.instance.releaseKeepAlive();
     }
   }
 

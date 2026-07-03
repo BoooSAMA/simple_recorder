@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
+import 'package:simple_recorder/services/recording_service.dart';
 
 class LiveNotificationService with WidgetsBindingObserver {
   static final LiveNotificationService _instance = LiveNotificationService._();
@@ -13,6 +15,7 @@ class LiveNotificationService with WidgetsBindingObserver {
   FlutterLocalNotificationsPlugin? _plugin;
   final Set<String> _notifiedLiveIds = {};
   bool _appInForeground = true;
+  int _keepAliveCount = 0;
 
   Future<void> init() async {
     WidgetsBinding.instance.addObserver(this);
@@ -100,6 +103,30 @@ class LiveNotificationService with WidgetsBindingObserver {
   /// 主播下播后清除去重记录，允许下次开播时重新通知
   void clearNotified(String id) {
     _notifiedLiveIds.remove(id);
+  }
+
+  /// 获取前台服务保活（计数引用，避免 poller 被系统杀死）
+  Future<void> acquireKeepAlive() async {
+    if (_keepAliveCount == 0) {
+      await RecordingSession.acquireForegroundService();
+      // 更新前台服务通知内容，提示用户保活原因
+      try {
+        FlutterBackgroundService().invoke('update', {
+          'title': 'Simple Recorder',
+          'content': '开播通知服务运行中',
+        });
+      } catch (_) {}
+    }
+    _keepAliveCount++;
+  }
+
+  /// 释放前台服务保活
+  Future<void> releaseKeepAlive() async {
+    if (_keepAliveCount <= 0) return;
+    _keepAliveCount--;
+    if (_keepAliveCount == 0) {
+      await RecordingSession.releaseForegroundService();
+    }
   }
 
   /// 释放资源

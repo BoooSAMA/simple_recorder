@@ -151,6 +151,16 @@ class RecordingSession {
     _foregroundServiceRefCount++;
   }
 
+  /// 为外部模块（如开播通知）获取前台服务保活
+  static Future<void> acquireForegroundService() {
+    return _acquireForegroundService();
+  }
+
+  /// 外部模块释放前台服务保活
+  static Future<void> releaseForegroundService() {
+    return _releaseForegroundService();
+  }
+
   /// 停止前台服务（最后一次录制结束时停掉）
   static Future<void> _releaseForegroundService() async {
     _foregroundServiceRefCount--;
