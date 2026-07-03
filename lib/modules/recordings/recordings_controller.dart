@@ -203,4 +203,15 @@ class RecordingsController extends GetxController {
       groups[index].isExpanded.toggle();
     }
   }
+
+  /// 切换分组中所有文件的选择状态
+  void toggleGroupSelection(int groupIndex) {
+    if (groupIndex >= 0 && groupIndex < groups.length) {
+      var group = groups[groupIndex];
+      var allSelected = group.items.every((item) => item.isSelected.value);
+      for (var item in group.items) {
+        item.isSelected.value = !allSelected;
+      }
+    }
+  }
 }

@@ -162,15 +162,21 @@ class RecordingsPage extends StatelessWidget {
             // 分组表头
             Obx(() {
               var isExpanded = group.isExpanded.value;
+              var isSelecting = controller.isSelectMode.value;
+              var allSelected = isSelecting &&
+                  group.items.isNotEmpty &&
+                  group.items.every((item) => item.isSelected.value);
               return InkWell(
                 onTap: () => controller.toggleGroup(groupIndex),
                 child: Container(
                   width: double.infinity,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest
-                        .withAlpha(60),
+                    color: isSelecting && allSelected
+                        ? theme.colorScheme.primary.withAlpha(12)
+                        : theme.colorScheme.surfaceContainerHighest
+                            .withAlpha(60),
                     border: Border(
                       bottom: BorderSide(
                           color: theme.dividerColor, width: 0.5),
@@ -178,7 +184,27 @@ class RecordingsPage extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.folder_outlined, size: 18),
+                      if (isSelecting)
+                        GestureDetector(
+                          onTap: () =>
+                              controller.toggleGroupSelection(groupIndex),
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Icon(
+                              allSelected
+                                  ? Icons.check_box
+                                  : Icons.check_box_outline_blank,
+                              size: 20,
+                              color: allSelected
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.onSurface
+                                      .withAlpha(100),
+                            ),
+                          ),
+                        )
+                      else
+                        const Icon(Icons.folder_outlined, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
