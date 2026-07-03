@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/widgets/settings/settings_card.dart';
@@ -105,7 +106,7 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
     var files = dir
         .listSync(recursive: true)
         .whereType<File>()
-        .where((f) => f.path.endsWith('.m4a'))
+        .where((f) => Constant.kAllAudioExtensions.any((ext) => f.path.endsWith(ext)))
         .toList()
       ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
 

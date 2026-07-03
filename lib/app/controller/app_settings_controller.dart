@@ -19,6 +19,12 @@ class AppSettingsController extends GetxController {
   final autoSaveToFolder = true.obs;
   final liveNotificationEnabled = true.obs;
 
+  /// 音频输出格式（m4a, mp3, flac, wav, ogg）
+  final audioFormat = Constant.kAudioFormatM4A.obs;
+
+  /// 自动解包后是否删除源 TS 文件
+  final deleteTsAfterUnpack = true.obs;
+
   /// 置顶的直播间 ID 集合
   var pinnedFollowIds = <String>{}.obs;
 
@@ -48,6 +54,10 @@ class AppSettingsController extends GetxController {
         .getValue("auto_save_to_folder", true);
     liveNotificationEnabled.value = LocalStorageService.instance
         .getValue("live_notification_enabled", true);
+    audioFormat.value = LocalStorageService.instance
+        .getValue("audio_format", Constant.kAudioFormatM4A);
+    deleteTsAfterUnpack.value = LocalStorageService.instance
+        .getValue("delete_ts_after_unpack", true);
   }
 
   /// 加载置顶直播间 ID 列表
@@ -128,5 +138,15 @@ class AppSettingsController extends GetxController {
     liveNotificationEnabled.value = value;
     LocalStorageService.instance.setValue("live_notification_enabled", value);
     EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
+  }
+
+  void setAudioFormat(String format) {
+    audioFormat.value = format;
+    LocalStorageService.instance.setValue("audio_format", format);
+  }
+
+  void setDeleteTsAfterUnpack(bool value) {
+    deleteTsAfterUnpack.value = value;
+    LocalStorageService.instance.setValue("delete_ts_after_unpack", value);
   }
 }

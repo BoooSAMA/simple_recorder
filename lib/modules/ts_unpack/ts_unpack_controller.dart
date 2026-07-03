@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
+import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/modules/ts_unpack/ts_unpack_service.dart';
@@ -126,7 +127,9 @@ class TsUnpackController extends GetxController {
       var fileItems = tsFiles.map((f) {
         var name = f.path.split('/').last;
         var isInterrupted = name.contains('_interrupted');
-        var isUnpacked = File(f.path.replaceAll('.ts', '.m4a')).existsSync();
+        var format = AppSettingsController.instance.audioFormat.value;
+        var ext = Constant.audioFormatExtension(format);
+        var isUnpacked = File(f.path.replaceAll('.ts', ext)).existsSync();
         return FileItem(
           path: f.path,
           fileName: name,
@@ -282,8 +285,10 @@ class TsUnpackController extends GetxController {
       currentFileIndex.value = i + 1;
       currentFileName.value = file.fileName;
 
+      var targetFormat = AppSettingsController.instance.audioFormat.value;
       var result = await TsUnpackService.unpack(
         file.path,
+        targetFormat: targetFormat,
         onProgress: (p) {
           // 单个文件进度占总进度的加权
           var base = i / selectedFiles.length;

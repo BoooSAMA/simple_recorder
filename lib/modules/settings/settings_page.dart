@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/follow_export_service.dart';
@@ -39,6 +40,21 @@ class SettingsPage extends StatelessWidget {
                       value: controller.liveNotificationEnabled.value,
                       onChanged: (v) =>
                           controller.setLiveNotificationEnabled(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SettingsAction(
+                      title: "音频输出格式",
+                      value: Constant.audioFormatDisplayName(
+                          controller.audioFormat.value),
+                      onTap: () => Get.toNamed(RoutePath.kAudioFormat),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("解包后删除 TS 文件"),
+                      subtitle: const Text("转换完成后自动删除中间 TS 文件"),
+                      value: controller.deleteTsAfterUnpack.value,
+                      onChanged: (v) =>
+                          controller.setDeleteTsAfterUnpack(v),
                     )),
               ],
             ),

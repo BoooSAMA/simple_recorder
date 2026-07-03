@@ -11,7 +11,7 @@ import 'package:just_audio/just_audio.dart';
 ///
 /// 调用方式：
 /// ```dart
-/// ShowAudioPlayerSheet.show(context, filePath: '/path/to/file.m4a', fileName: 'xxx.m4a');
+/// ShowAudioPlayerSheet.show(context, filePath: '/path/to/file.mp3', fileName: 'xxx.mp3');
 /// ```
 class ShowAudioPlayerSheet {
   static void show(
@@ -201,13 +201,16 @@ class _AudioPlayerSheetContentState extends State<AudioPlayerSheetContent> {
     setState(() => _isTrimming = true);
 
     final inputPath = _originalAudioSourcePath;
-    final baseName = inputPath.replaceAll('.m4a', '');
-    var outputPath = '${baseName}_trimmed.m4a';
+    // 从源文件路径中提取扩展名
+    final dotIndex = inputPath.lastIndexOf('.');
+    final sourceExt = dotIndex > 0 ? inputPath.substring(dotIndex) : '.m4a';
+    final baseName = inputPath.substring(0, dotIndex > 0 ? dotIndex : inputPath.length);
+    var outputPath = '${baseName}_trimmed$sourceExt';
 
     // 避免覆盖
     int counter = 1;
     while (File(outputPath).existsSync()) {
-      outputPath = '${baseName}_trimmed($counter).m4a';
+      outputPath = '${baseName}_trimmed($counter)$sourceExt';
       counter++;
     }
 

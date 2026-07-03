@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
+import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 
 class RecordingItem {
@@ -169,18 +170,19 @@ class RecordingsController extends GetxController {
       ..sort((a, b) => a.path.compareTo(b.path));
 
     for (var subDir in subDirs) {
-      var m4aFiles = subDir
+      var audioFiles = subDir
           .listSync()
           .whereType<File>()
-          .where((f) => f.path.endsWith('.m4a'))
+          .where((f) => Constant.kAllAudioExtensions
+              .any((ext) => f.path.endsWith(ext)))
           .toList()
         ..sort(
           (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
         );
 
-      if (m4aFiles.isEmpty) continue;
+      if (audioFiles.isEmpty) continue;
 
-      var items = m4aFiles.map((f) {
+      var items = audioFiles.map((f) {
         var name = f.path.split('/').last;
         return RecordingItem(
           path: f.path,

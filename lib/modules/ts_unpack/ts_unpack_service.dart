@@ -5,6 +5,7 @@ import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 
+import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/log.dart';
 
 class UnpackResult {
@@ -20,22 +21,25 @@ class UnpackResult {
 }
 
 class TsUnpackService {
-  /// 解包 TS 文件为 M4A（纯 remux，`-c:a copy`，不重编码）
+  /// 解包 TS 文件为目标音频格式
   ///
   /// [tsPath] TS 文件路径
+  /// [targetFormat] 目标格式 (m4a, mp3, flac, wav, ogg)，默认 m4a
   /// [onProgress] 进度回调 (0.0 ~ 1.0)
   static Future<UnpackResult> unpack(
     String tsPath, {
+    String targetFormat = 'm4a',
     void Function(double)? onProgress,
   }) async {
-    var m4aPath = tsPath.replaceAll('.ts', '.m4a');
+    var ext = Constant.audioFormatExtension(targetFormat);
+    var outputPath = tsPath.replaceAll('.ts', ext);
 
-    // 检查同名 M4A 是否已存在
-    if (File(m4aPath).existsSync()) {
+    // 检查同名文件是否已存在
+    if (File(outputPath).existsSync()) {
       return UnpackResult(
         success: false,
         path: tsPath,
-        error: "同名 M4A 文件已存在",
+        error: "同名 ${ext.toUpperCase()} 文件已存在",
       );
     }
 
@@ -47,15 +51,8 @@ class TsUnpackService {
       Log.logPrint("FFprobe 获取总时长: ${totalDuration}s");
     }
 
-    var args = [
-      '-y',
-      '-i',
-      tsPath,
-      '-c:a',
-      'copy',
-      '-vn',
-      m4aPath,
-    ];
+    var codecArgs = Constant.audioFormatFfmpegArgs(targetFormat);
+    var args = ['-y', '-i', tsPath, ...codecArgs, outputPath];
     Log.logPrint("开始解包: ffmpeg ${args.join(' ')}");
 
     var completer = Completer<UnpackResult>();
@@ -67,7 +64,7 @@ class TsUnpackService {
     if (onProgress != null) {
       progressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
         if (!completer.isCompleted) {
-          var outputFile = File(m4aPath);
+          var outputFile = File(outputPath);
           if (outputFile.existsSync()) {
             var written = outputFile.lengthSync();
             // 写入比例：纯音频输出约占总 TS 大小的 5~20%
@@ -87,7 +84,7 @@ class TsUnpackService {
         progressTimer?.cancel();
         var returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode)) {
-          Log.logPrint("解包成功: $m4aPath");
+          Log.logPrint("解包成功: $outputPath");
           onProgress?.call(1.0);
           completer.complete(UnpackResult(success: true, path: tsPath));
         } else if (ReturnCode.isCancel(returnCode)) {

@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -366,9 +367,9 @@ class RecordingSession {
     _finished = true;
     if (_startTime != null && _outputPath.isNotEmpty && !_discardRequested) {
       await _renameFileWithEndTime();
-      // 成功完成录音后，自动解包 TS → M4A
+      // 成功完成录音后，自动解包 TS → 目标格式
       if (_outputPath.endsWith('.ts')) {
-        await _autoUnpackToM4A();
+        await _autoUnpackToTargetFormat();
       }
     }
     _startTime = null;
@@ -382,24 +383,41 @@ class RecordingSession {
     _finishCompleter?.complete();
   }
 
-  /// 将完成录制的 TS 文件自动解包为 M4A（纯 remux，`-c:a copy`，不重编码）
-  Future<void> _autoUnpackToM4A() async {
+  /// 将完成录制的 TS 文件自动解包为目标格式（根据设置）
+  Future<void> _autoUnpackToTargetFormat() async {
     var tsPath = _outputPath;
     if (tsPath.isEmpty || !tsPath.endsWith('.ts')) return;
 
-    var m4aPath = tsPath.replaceAll('.ts', '.m4a');
-    // 避免重复解包（如手动解包工具已处理过）
-    if (File(m4aPath).existsSync()) return;
+    var format = AppSettingsController.instance.audioFormat.value;
+    var ext = Constant.audioFormatExtension(format);
+    var outputPath = tsPath.replaceAll('.ts', ext);
 
-    var args = ['-y', '-i', tsPath, '-c:a', 'copy', '-vn', m4aPath];
-    Log.logPrint("自动解包 TS → M4A: ${args.join(' ')}");
+    // 避免重复解包（目标文件已存在）
+    if (File(outputPath).existsSync()) return;
+
+    var codecArgs = Constant.audioFormatFfmpegArgs(format);
+    var args = ['-y', '-i', tsPath, ...codecArgs, outputPath];
+    Log.logPrint("自动解包 TS → ${Constant.audioFormatDisplayName(format)}: ${args.join(' ')}");
 
     var completer = Completer<void>();
-    FFmpegKit.executeWithArgumentsAsync(args, (session) async {
+    await FFmpegKit.executeWithArgumentsAsync(args, (session) async {
       var returnCode = await session.getReturnCode();
       if (ReturnCode.isSuccess(returnCode)) {
-        Log.logPrint("自动解包成功: $m4aPath");
-        _outputPath = m4aPath; // 更新路径指向 M4A
+        Log.logPrint("自动解包成功: $outputPath");
+        _outputPath = outputPath;
+
+        // 解包成功后，按设置决定是否删除 TS 文件
+        if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
+          try {
+            var tsFile = File(tsPath);
+            if (await tsFile.exists()) {
+              await tsFile.delete();
+              Log.logPrint("已删除源 TS 文件: $tsPath");
+            }
+          } catch (e) {
+            Log.logPrint("删除源 TS 文件失败: $e");
+          }
+        }
       } else {
         Log.logPrint("自动解包失败: $tsPath");
       }
