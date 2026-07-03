@@ -262,6 +262,21 @@ class _AudioPlayerSheetContentState extends State<AudioPlayerSheetContent> {
     }
   }
 
+  void _seekBackward() {
+    var pos = _player.position;
+    var newPos = pos - const Duration(seconds: 10);
+    if (newPos < Duration.zero) newPos = Duration.zero;
+    _player.seek(newPos);
+  }
+
+  void _seekForward() {
+    var pos = _player.position;
+    var dur = _player.duration;
+    var newPos = pos + const Duration(seconds: 10);
+    if (dur != null && newPos > dur) newPos = dur;
+    _player.seek(newPos);
+  }
+
   // ── 构建 UI ──
 
   @override
@@ -771,7 +786,22 @@ class _AudioPlayerSheetContentState extends State<AudioPlayerSheetContent> {
               ),
             ),
 
-            const SizedBox(width: 16),
+            const Spacer(),
+
+            // 后退 10s
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: IconButton(
+                icon: const Icon(Icons.replay_10, size: 22),
+                onPressed: _seekBackward,
+                tooltip: '后退 10 秒',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+
+            const SizedBox(width: 12),
 
             // 播放/暂停
             SizedBox(
@@ -794,7 +824,22 @@ class _AudioPlayerSheetContentState extends State<AudioPlayerSheetContent> {
               ),
             ),
 
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
+
+            // 前进 10s
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: IconButton(
+                icon: const Icon(Icons.forward_10, size: 22),
+                onPressed: _seekForward,
+                tooltip: '前进 10 秒',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+
+            const Spacer(),
 
             // 裁剪入口
             SizedBox(

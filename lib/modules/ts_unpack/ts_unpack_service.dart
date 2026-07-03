@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 
 import 'package:simple_recorder/app/log.dart';
@@ -38,6 +39,14 @@ class TsUnpackService {
       );
     }
 
+    // ── 先通过 FFprobe 获取文件总时长 ──
+    var totalDuration = await _probeDuration(tsPath);
+    if (totalDuration == 0) {
+      Log.logPrint("FFprobe 未能获取时长，将仅使用文件尺寸估算进度");
+    } else {
+      Log.logPrint("FFprobe 获取总时长: ${totalDuration}s");
+    }
+
     var args = [
       '-y',
       '-i',
@@ -50,14 +59,36 @@ class TsUnpackService {
     Log.logPrint("开始解包: ffmpeg ${args.join(' ')}");
 
     var completer = Completer<UnpackResult>();
-    double totalDuration = 0;
+    var inputFile = File(tsPath);
+    var inputSize = inputFile.lengthSync();
+
+    // 文件尺寸进度监测（作为后备）
+    Timer? progressTimer;
+    if (onProgress != null) {
+      progressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (!completer.isCompleted) {
+          var outputFile = File(m4aPath);
+          if (outputFile.existsSync()) {
+            var written = outputFile.lengthSync();
+            // 写入比例：纯音频输出约占总 TS 大小的 5~20%
+            // 用 0.15 作为中间估计值
+            var ratio = inputSize > 0
+                ? (written / (inputSize * 0.15)).clamp(0.0, 0.95)
+                : 0.0;
+            onProgress(ratio);
+          }
+        }
+      });
+    }
 
     await FFmpegKit.executeWithArgumentsAsync(
       args,
       (session) async {
+        progressTimer?.cancel();
         var returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode)) {
           Log.logPrint("解包成功: $m4aPath");
+          onProgress?.call(1.0);
           completer.complete(UnpackResult(success: true, path: tsPath));
         } else if (ReturnCode.isCancel(returnCode)) {
           completer.complete(UnpackResult(
@@ -80,7 +111,7 @@ class TsUnpackService {
         var msg = log.getMessage();
         if (onProgress == null) return;
 
-        // 从 FFmpeg 日志中解析总时长: "Duration: 01:23:45.67, start: ..."
+        // 尝试从 FFmpeg 日志解析总时长（兜底）
         if (totalDuration == 0) {
           var durMatch = RegExp(
             r'Duration:\s*(\d{2}):(\d{2}):(\d{2})\.\d{2}',
@@ -91,10 +122,11 @@ class TsUnpackService {
               durMatch.group(2)!,
               durMatch.group(3)!,
             );
+            Log.logPrint("日志解析总时长: ${totalDuration}s");
           }
         }
 
-        // 解析当前位置: "time=01:23:45.67 bitrate="
+        // 解析当前位置: "time=01:23:45.67"
         if (totalDuration > 0) {
           var timeMatch = RegExp(
             r'time=(\d{2}):(\d{2}):(\d{2})\.\d{2}',
@@ -112,6 +144,22 @@ class TsUnpackService {
     );
 
     return completer.future;
+  }
+
+  /// 使用 FFprobe 获取媒体文件时长（秒）
+  static Future<double> _probeDuration(String path) async {
+    try {
+      var session = await FFprobeKit.getMediaInformation(path);
+      var info = session.getMediaInformation();
+      var durationStr = info?.getDuration();
+      if (durationStr != null && durationStr.isNotEmpty) {
+        var d = double.tryParse(durationStr);
+        if (d != null && d > 0) return d;
+      }
+    } catch (e) {
+      Log.logPrint("FFprobe 获取时长失败: $e");
+    }
+    return 0;
   }
 
   static double _parseTimeToSeconds(String h, String m, String s) {
