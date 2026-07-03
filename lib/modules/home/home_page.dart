@@ -74,8 +74,9 @@ class HomePage extends StatelessWidget {
           );
         }),
         actions: [
+          // 一键录制按钮：有置顶直播且未全部开始录制时显示
           Obx(() {
-            final count = controller.pinnedLiveCount;
+            final count = controller.pinnedReadyCount;
             if (count == 0 || controller.isLoading.value) {
               return const SizedBox.shrink();
             }
@@ -89,6 +90,27 @@ class HomePage extends StatelessWidget {
                     width: 40,
                     height: 40,
                     child: Icon(Icons.radio_button_checked, size: 22),
+                  ),
+                ),
+              ),
+            );
+          }),
+          // 一键结束按钮：有置顶录制进行中时显示
+          Obx(() {
+            final count = controller.pinnedRecordingCount;
+            if (count == 0 || controller.isLoading.value) {
+              return const SizedBox.shrink();
+            }
+            return GestureDetector(
+              onTap: () => controller.stopAllPinnedRecordings(),
+              child: Tooltip(
+                message: "一键结束置顶录制 ($count)",
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Icon(Icons.stop, size: 24),
                   ),
                 ),
               ),

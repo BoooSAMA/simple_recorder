@@ -58,6 +58,32 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     return count;
   }
 
+  /// 当前正在录制的置顶直播间数量（用于"一键结束"按钮显隐）
+  int get pinnedRecordingCount {
+    final _ = RecordingManager.instance.activeCount.value; // 响应式触发
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
+    if (pinnedIds.isEmpty) return 0;
+    var count = 0;
+    for (final user in followList) {
+      if (!pinnedIds.contains(user.id)) continue;
+      if (RecordingManager.instance.isRecording(user.id)) count++;
+    }
+    return count;
+  }
+
+  /// 可启动录制的置顶直播数量（已开播 + 未在录制，用于"一键录制"按钮显隐）
+  int get pinnedReadyCount {
+    final _ = RecordingManager.instance.activeCount.value; // 响应式触发
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
+    if (pinnedIds.isEmpty) return 0;
+    var count = 0;
+    for (final user in followList) {
+      if (!pinnedIds.contains(user.id) || user.liveStatus.value != 2) continue;
+      if (!RecordingManager.instance.isRecording(user.id)) count++;
+    }
+    return count;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -293,11 +319,6 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _syncPoller();
       _checkPinnedLiveStatus(notify: true);
-    } else if (state == AppLifecycleState.paused) {
-      if (RecordingManager.instance.activeSessions.isEmpty) {
-        _livePoller?.cancel();
-        _livePoller = null;
-      }
     }
   }
 
@@ -475,6 +496,43 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
     Get.snackbar("一键录制完成",
         "成功启动: $started  |  跳过/失败: $skipped",
+        snackPosition: SnackPosition.BOTTOM);
+  }
+
+  /// 一键结束所有置顶直播的录制（顺序停止，不影响自动解包）
+  Future<void> stopAllPinnedRecordings() async {
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
+    if (pinnedIds.isEmpty) return;
+
+    final pinRecording = <FollowUser>[];
+    for (final user in followList) {
+      if (!pinnedIds.contains(user.id)) continue;
+      if (RecordingManager.instance.isRecording(user.id)) {
+        pinRecording.add(user);
+      }
+    }
+
+    if (pinRecording.isEmpty) {
+      Get.snackbar("提示", "没有正在录制的置顶直播间",
+          snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    isLoading.value = true;
+    var stopped = 0;
+
+    for (var i = 0; i < pinRecording.length; i++) {
+      loadProgress.value = (i + 1) / pinRecording.length;
+      final user = pinRecording[i];
+      await RecordingManager.instance.stopRecording(user.id);
+      stopped++;
+    }
+
+    isLoading.value = false;
+    loadProgress.value = 0;
+
+    Get.snackbar("一键结束完成",
+        "已停止 $stopped 个录制",
         snackPosition: SnackPosition.BOTTOM);
   }
 
