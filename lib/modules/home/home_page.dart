@@ -136,7 +136,7 @@ class HomePage extends StatelessWidget {
                 value: 'audio_path',
                 child: ListTile(
                   leading: Icon(Icons.folder_outlined),
-                  title: Text('音频存储路径'),
+                  title: Text('配置存储路径'),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),
