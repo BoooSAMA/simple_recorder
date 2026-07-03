@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 
 class Log {
   static final List<LogEntry> _debugLogs = [];
+  static final RxInt logCounter = 0.obs;
   static Logger? _logger;
 
   static Logger get logger {
@@ -49,10 +51,12 @@ class Log {
     if (_debugLogs.length > 500) {
       _debugLogs.removeAt(0);
     }
+    logCounter.value++;
   }
 
   static void clearDebugLogs() {
     _debugLogs.clear();
+    logCounter.value++;
   }
 }
 
