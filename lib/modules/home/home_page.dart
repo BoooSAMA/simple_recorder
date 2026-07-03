@@ -120,12 +120,6 @@ class HomePage extends StatelessWidget {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
               switch (value) {
-                case 'export':
-                  controller.exportData();
-                  break;
-                case 'import':
-                  controller.importData();
-                  break;
                 case 'audio_path':
                   Get.toNamed(RoutePath.kAudioSettings);
                   break;
@@ -143,24 +137,6 @@ class HomePage extends StatelessWidget {
                 child: ListTile(
                   leading: Icon(Icons.folder_outlined),
                   title: Text('音频存储路径'),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'export',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file),
-                  title: Text('导出关注数据'),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'import',
-                child: ListTile(
-                  leading: Icon(Icons.file_download),
-                  title: Text('导入关注数据'),
                   contentPadding: EdgeInsets.zero,
                   visualDensity: VisualDensity.compact,
                 ),

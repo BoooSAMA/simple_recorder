@@ -11,7 +11,6 @@ import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/db_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_recorder/services/recording_service.dart';
-import 'package:simple_recorder/services/follow_export_service.dart';
 import 'package:simple_recorder/services/live_notification_service.dart';
 
 class HomeController extends GetxController with WidgetsBindingObserver {
@@ -619,13 +618,4 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// 导出关注数据
-  void exportData() {
-    FollowExportService.exportFollowData();
-  }
-
-  /// 导入关注数据
-  void importData() {
-    FollowExportService.importFollowData();
-  }
 }
