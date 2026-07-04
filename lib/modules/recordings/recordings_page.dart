@@ -314,13 +314,18 @@ class RecordingsPage extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      "${item.fileSize} · ${item.lastModified}",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 11,
-                          color: theme.colorScheme.onSurface
-                              .withAlpha(100)),
-                    ),
+                    Obx(() {
+                      var dur = item.duration.value;
+                      var info = "${item.fileSize} · ${item.lastModified}";
+                      if (dur.isNotEmpty) info += " · $dur";
+                      return Text(
+                        info,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface
+                                .withAlpha(100)),
+                      );
+                    }),
                   ],
                 ),
               ),

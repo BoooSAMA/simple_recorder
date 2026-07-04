@@ -88,8 +88,11 @@ void _markInterruptedFiles() {
         // 非 App 命名的文件不处理
         if (!appFileRegex.hasMatch(name)) continue;
 
-        // 标记为中断文件
-        var newPath = entity.path.replaceAll('.ts', '_interrupted.ts');
+        // 用文件最后修改时间作为近似结束时间
+        var lastModified = await entity.lastModified();
+        var endHour = lastModified.hour.toString().padLeft(2, '0');
+        var endMin = lastModified.minute.toString().padLeft(2, '0');
+        var newPath = entity.path.replaceAll('.ts', '_$endHour-${endMin}_interrupted.ts');
         await entity.rename(newPath);
         Log.logPrint("标记中断文件: $name → ${newPath.split('/').last}");
       }

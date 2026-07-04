@@ -321,6 +321,7 @@ class RecordingSession {
     if (_retries >= maxRetries) {
       Log.logPrint("录音重连失败，已达最大重试次数");
       lastError.value = "重连失败，已达最大重试次数";
+      _isInterrupted = true;
       _onFinished();
       return;
     }
@@ -385,6 +386,7 @@ class RecordingSession {
   }
 
   bool _finished = false;
+  bool _isInterrupted = false;
 
   Future<void> _onFinished() async {
     if (_finished) return; // 防止重入（retry + cancel 双路径可能同时触发）
@@ -465,7 +467,8 @@ class RecordingSession {
         "${start.hour.toString().padLeft(2, '0')}-${start.minute.toString().padLeft(2, '0')}";
     var endPart =
         "${endTime.hour.toString().padLeft(2, '0')}-${endTime.minute.toString().padLeft(2, '0')}";
-    var newName = "${userName}_${datePart}_${startPart}_$endPart.ts";
+    var suffix = _isInterrupted ? '_interrupted' : '';
+    var newName = "${userName}_${datePart}_${startPart}_$endPart$suffix.ts";
     var newPath = "$dir/$newName";
     try {
       await file.rename(newPath);

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -12,13 +13,16 @@ class RecordingItem {
   final String fileName;
   final String folderName;
   final RxBool isSelected;
+  final RxString duration;
 
   RecordingItem({
     required this.path,
     required this.fileName,
     required this.folderName,
     bool selected = false,
-  }) : isSelected = RxBool(selected);
+    String duration = "",
+  })  : isSelected = RxBool(selected),
+        duration = RxString(duration);
 
   String get fileSize {
     try {
@@ -198,6 +202,33 @@ class RecordingsController extends GetxController {
     }
 
     isLoading.value = false;
+
+    // 异步探测各文件时长
+    _probeDurations();
+  }
+
+  /// 批量异步探测音频文件时长
+  Future<void> _probeDurations() async {
+    for (var group in groups) {
+      for (var item in group.items) {
+        try {
+          var session = await FFprobeKit.getMediaInformation(item.path);
+          var info = session.getMediaInformation();
+          var raw = info?.getDuration();
+          if (raw != null && raw.isNotEmpty) {
+            var secs = double.tryParse(raw);
+            if (secs != null && secs > 0) {
+              var min = secs ~/ 60;
+              var sec = secs.round() % 60;
+              item.duration.value =
+                  "${min.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}";
+            }
+          }
+        } catch (e) {
+          // 单个文件探测失败不影响其他文件
+        }
+      }
+    }
   }
 
   void toggleGroup(int index) {
