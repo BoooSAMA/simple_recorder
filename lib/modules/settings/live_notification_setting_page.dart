@@ -33,6 +33,14 @@ class LiveNotificationSettingPage extends StatelessWidget {
                       minutes: controller.livePollInterval.value,
                       onChanged: (v) => controller.setLivePollInterval(v),
                     )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("置顶主播开播时自动录制"),
+                      subtitle: const Text("轮询检测到 pin 主播开播后自动开始录制"),
+                      value: controller.autoRecordPinned.value,
+                      onChanged: (v) =>
+                          controller.setAutoRecordPinned(v),
+                    )),
               ],
             ),
           ),

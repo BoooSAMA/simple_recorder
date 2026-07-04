@@ -267,7 +267,6 @@ class RecordingSession {
     args.addAll([
       '-reconnect', '1',
       '-reconnect_streamed', '1',
-      '-reconnect_at_eof', '1',
       '-reconnect_delay_max', '5',
       '-timeout', '10000000',
     ]);
@@ -338,7 +337,9 @@ class RecordingSession {
         return;
       }
       await _onRefreshPlayUrl?.call();
-      await _startFFmpegSession(playUrl);
+      // 使用刷新后的 URL 重试，而非旧的 playUrl 参数
+      var freshUrl = _getPlayUrl?.call() ?? playUrl;
+      await _startFFmpegSession(freshUrl);
     });
   }
 

@@ -218,9 +218,18 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
         if (!wasLive && isLive && notify && _firstPinCheckDone) {
           await LiveNotificationService.instance.notifyLiveStart(user);
+          // 自动录制：置顶主播开播时自动开始录制
+          if (settings.autoRecordPinned.value) {
+            await _autoStartRecording(user);
+          }
         }
         if (!isLive) {
           LiveNotificationService.instance.clearNotified(user.id);
+          // 直播已结束：若正在录制则自动停止
+          if (RecordingManager.instance.isRecording(user.id)) {
+            Log.logPrint("检测到置顶主播直播已结束，自动停止录制: ${user.userName}");
+            await RecordingManager.instance.stopRecording(user.id);
+          }
         }
       } catch (e) {
         Log.logPrint("检测 pin 主播状态失败: ${user.userName} - $e");
@@ -270,6 +279,12 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           user.liveStatus.value = isLive ? 2 : 1;
           if (isLive) {
             liveIds.add(user.id);
+          } else {
+            // 非直播状态：若正在录制则自动停止（直播间已结束，停止无意义录制）
+            if (RecordingManager.instance.isRecording(user.id)) {
+              Log.logPrint("检测到直播已结束，自动停止录制: ${user.userName}");
+              await RecordingManager.instance.stopRecording(user.id);
+            }
           }
         } catch (e) {
           Log.logPrint("检查直播状态失败: ${user.userName} - $e");
@@ -400,6 +415,66 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     } catch (e) {
       Log.logPrint("开始录制失败: $e");
       Get.snackbar("录制失败", e.toString());
+    }
+  }
+
+  /// 静默自动录制（用于自动录制功能，不弹 SnackBar，仅记日志）
+  Future<void> _autoStartRecording(FollowUser user) async {
+    var session = RecordingManager.instance.getSession(user.id);
+    if (session != null && session.isRecording.value) return;
+
+    if (user.liveStatus.value != 2) return;
+
+    var site = Sites.getSite(user.siteId);
+    if (site == null) {
+      Log.logPrint("自动录制失败: 不支持的平台 ${user.siteId}");
+      return;
+    }
+
+    var newSession = RecordingSession(
+      taskId: user.id,
+      roomId: user.roomId,
+      siteId: user.siteId,
+      userName: user.userName,
+    );
+
+    try {
+      var detail = await site.liveSite.getRoomDetail(roomId: user.roomId);
+      var qualities = await site.liveSite.getPlayQualites(detail: detail);
+      if (qualities.isEmpty) {
+        Log.logPrint("自动录制失败: 未获取到清晰度选项: ${user.userName}");
+        return;
+      }
+      var playUrl = await site.liveSite.getPlayUrls(
+        detail: detail,
+        quality: qualities.first,
+      );
+      if (playUrl.urls.isEmpty) {
+        Log.logPrint("自动录制失败: 未获取到播放地址: ${user.userName}");
+        return;
+      }
+
+      newSession.configure(
+        getPlayUrl: () => playUrl.urls.first,
+        onRefreshPlayUrl: () async {
+          var newDetail = await site.liveSite.getRoomDetail(roomId: user.roomId);
+          var newQualites = await site.liveSite.getPlayQualites(detail: newDetail);
+          if (newQualites.isEmpty) return;
+          var newUrl = await site.liveSite.getPlayUrls(
+            detail: newDetail,
+            quality: newQualites.first,
+          );
+          if (newUrl.urls.isNotEmpty) {
+            playUrl.urls.first = newUrl.urls.first;
+          }
+        },
+        getHeaders: () => playUrl.headers,
+      );
+
+      await RecordingManager.instance.startRecording(newSession);
+      Log.logPrint("自动录制已启动: ${user.userName}");
+    } catch (e) {
+      Log.logPrint("自动录制失败: ${user.userName} - $e");
     }
   }
 

@@ -19,6 +19,7 @@ class AppSettingsController extends GetxController {
   final autoSaveToFolder = true.obs;
   final liveNotificationEnabled = true.obs;
   final livePollInterval = 5.obs;
+  final autoRecordPinned = false.obs;
 
   /// 音频输出格式（m4a, mp3, flac, wav, ogg）
   final audioFormat = Constant.kAudioFormatM4A.obs;
@@ -57,6 +58,8 @@ class AppSettingsController extends GetxController {
         .getValue("live_notification_enabled", true);
     livePollInterval.value = LocalStorageService.instance
         .getValue("live_poll_interval", 5);
+    autoRecordPinned.value = LocalStorageService.instance
+        .getValue("auto_record_pinned", false);
     audioFormat.value = LocalStorageService.instance
         .getValue("audio_format", Constant.kAudioFormatM4A);
     deleteTsAfterUnpack.value = LocalStorageService.instance
@@ -148,6 +151,11 @@ class AppSettingsController extends GetxController {
     livePollInterval.value = clamped;
     LocalStorageService.instance.setValue("live_poll_interval", clamped);
     EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
+  }
+
+  void setAutoRecordPinned(bool value) {
+    autoRecordPinned.value = value;
+    LocalStorageService.instance.setValue("auto_record_pinned", value);
   }
 
   void setAudioFormat(String format) {
