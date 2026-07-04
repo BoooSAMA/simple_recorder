@@ -462,8 +462,8 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
         child: Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        border: isPinned
-            ? Border.all(color: Colors.green, width: 2.0)
+        border: isPinned && liveStatus == 2
+            ? Border.all(color: const Color(0xFF9ACD32), width: 2.0)
             : null,
       ),
       child: Card(
