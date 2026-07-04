@@ -26,6 +26,9 @@ class RecordingSession {
   final RxInt retryCount = 0.obs;
   final RxString lastError = "".obs;
 
+  /// RecordingManager 设置的清理回调，session 自然结束时自动通知
+  void Function()? onFinished;
+
   int? _sessionId;
   Timer? _timer;
   int _seconds = 0;
@@ -391,6 +394,8 @@ class RecordingSession {
     _releaseWakelock();
     _releaseForegroundService();
     _finishCompleter?.complete();
+    // 通知 RecordingManager 从 activeSessions 中移除
+    onFinished?.call();
   }
 
   /// 将完成录制的 TS 文件自动解包为目标格式（根据设置）

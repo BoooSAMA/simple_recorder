@@ -45,7 +45,19 @@ class RecordingManager extends GetxService {
 
     activeSessions.add(session);
     activeCount.value = activeSessions.length;
+    // session 自然结束时（断流/重试耗尽/用户主动停止）自动从列表移除
+    session.onFinished = () {
+      activeSessions.remove(session);
+      activeCount.value = activeSessions.length;
+    };
     await session.start();
+
+    // 如果 start() 未抛异常但 session 实际未启动（如无播放地址），清理它
+    if (!session.isRecording.value && activeSessions.contains(session)) {
+      Log.logPrint("session 未实际启动，清理: ${session.taskId}");
+      activeSessions.remove(session);
+      activeCount.value = activeSessions.length;
+    }
   }
 
   /// Returns a map with 'path', 'fileName', 'fileSize' if file was saved.
