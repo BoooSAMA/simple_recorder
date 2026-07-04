@@ -126,7 +126,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (shouldRun && _livePoller == null) {
       _firstPinCheckDone = false;
       _livePoller = Timer.periodic(
-        const Duration(minutes: 3),
+        Duration(minutes: settings.livePollInterval.value),
         (_) => _checkPinnedLiveStatus(notify: true),
       );
       _checkPinnedLiveStatus(notify: false);

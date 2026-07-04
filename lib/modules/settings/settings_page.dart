@@ -34,12 +34,13 @@ class SettingsPage extends StatelessWidget {
                       onChanged: (v) => controller.setAutoSaveToFolder(v),
                     )),
                 const Divider(height: 1, indent: 16),
-                Obx(() => SwitchListTile(
-                      title: const Text("开播通知"),
-                      subtitle: const Text("Pin 的主播开播时通知（每 3 分钟检测一次）"),
-                      value: controller.liveNotificationEnabled.value,
-                      onChanged: (v) =>
-                          controller.setLiveNotificationEnabled(v),
+                Obx(() => SettingsAction(
+                      title: "开播通知",
+                      value: controller.liveNotificationEnabled.value
+                          ? "已开启 (${controller.livePollInterval.value}分钟)"
+                          : "已关闭",
+                      onTap: () =>
+                          Get.toNamed(RoutePath.kLiveNotification),
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SettingsAction(

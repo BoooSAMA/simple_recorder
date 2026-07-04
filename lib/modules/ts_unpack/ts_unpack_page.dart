@@ -392,7 +392,7 @@ class TsUnpackPage extends StatelessWidget {
       if (controller.isProcessing.value) {
         // ── 处理中状态 ──
         return Container(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottomInset),
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomInset),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             border: Border(
@@ -402,13 +402,31 @@ class TsUnpackPage extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 进度条
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: controller.progress.value,
-                  minHeight: 6,
-                ),
+              // 进度条 + 百分比
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: controller.progress.value,
+                        minHeight: 6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 42,
+                    child: Text(
+                      "${(controller.progress.value * 100).toStringAsFixed(0)}%",
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.primary,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               // 进度文字

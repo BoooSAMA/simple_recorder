@@ -5,6 +5,7 @@ import 'package:simple_recorder/modules/settings/settings_page.dart';
 import 'package:simple_recorder/modules/settings/appstyle_setting_page.dart';
 import 'package:simple_recorder/modules/settings/audio_settings_page.dart';
 import 'package:simple_recorder/modules/settings/audio_format_settings_page.dart';
+import 'package:simple_recorder/modules/settings/live_notification_setting_page.dart';
 import 'package:simple_recorder/modules/debug_log/debug_log_page.dart';
 import 'package:simple_recorder/modules/ts_unpack/ts_unpack_page.dart';
 import 'package:simple_recorder/modules/recordings/recordings_page.dart';
@@ -35,6 +36,10 @@ class AppPages {
     GetPage(
       name: RoutePath.kAudioFormat,
       page: () => const AudioFormatSettingsPage(),
+    ),
+    GetPage(
+      name: RoutePath.kLiveNotification,
+      page: () => const LiveNotificationSettingPage(),
     ),
     GetPage(
       name: RoutePath.kDebugLog,
