@@ -231,6 +231,17 @@ class RecordingSession {
       // 文件大小每 5 秒轮询一次，减少系统调用
       if (sizeTickCounter % 5 == 0) {
         fileSize.value = _formatFileSize(_outputPath);
+        // 停滞检测：服务器限流导致 FFmpeg 无限重连，文件始终 0B
+        if (_seconds > 90 && fileSize.value == "0 B") {
+          lastError.value = "录制停滞，可能服务器限流，已自动结束";
+          Log.logPrint("检测到录制停滞，自动结束: $_outputPath, ${_seconds}s");
+          _onFinished();
+          return;
+        }
+        if (_seconds > 60 && fileSize.value == "0 B") {
+          lastError.value = "录制异常：长时间无数据写入（可能服务器限流）";
+          Log.logPrint("录制停滞预警: $_outputPath, ${_seconds}s");
+        }
       }
       sizeTickCounter++;
     });

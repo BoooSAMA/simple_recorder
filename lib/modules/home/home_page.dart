@@ -33,7 +33,7 @@ class HomePage extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                "$count / 20",
+                "$count / ${RecordingManager.instance.maxConcurrent}",
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ],
