@@ -96,7 +96,7 @@ class DebugLogPage extends StatelessWidget {
             separatorBuilder: (_, i) => const Divider(),
             padding: const EdgeInsets.all(12),
             itemBuilder: (_, i) {
-              var item = Log.debugLogs[i];
+              var item = Log.debugLogs[Log.debugLogs.length - 1 - i];
               return SelectableText(
                 "${item.time}\r\n${item.message}",
                 style: TextStyle(color: item.color, fontSize: 12),
