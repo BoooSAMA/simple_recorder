@@ -24,6 +24,9 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 前台服务初始化（平台通道）与 Hive 初始化（文件 I/O）并行执行
+  final fgInit = _initForegroundService();
   await Hive.initFlutter();
 
   Hive.registerAdapter(FollowUserAdapter());
@@ -31,6 +34,13 @@ void main() async {
 
   await Get.put(LocalStorageService()).init();
   await Get.put(DBService()).init();
+
+  // 等待前台服务初始化完成（通常在上述文件 I/O 期间已就绪）
+  try {
+    await fgInit;
+  } catch (e) {
+    Log.logPrint("前台服务初始化失败（可能在不支持的平台上）: $e");
+  }
 
   Get.put(AppSettingsController());
   Get.put(RecordingManager());
@@ -49,13 +59,6 @@ void main() async {
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: Colors.transparent,
   ));
-
-  // 初始化前台服务，防止系统杀死后台录制进程
-  try {
-    await _initForegroundService();
-  } catch (e) {
-    Log.logPrint("前台服务初始化失败（可能在不支持的平台上）: $e");
-  }
 
   runApp(const MyApp());
 }

@@ -317,6 +317,9 @@ class TsUnpackController extends GetxController {
       Log.logPrint("解包失败详情:\n${failDetails.join('\n')}");
     }
     SmartDialog.showToast(summary);
+
+    // 刷新文件列表（如有 TS 被删除，列表中会消失）
+    scanDirectory();
   }
 
   /// 取消批量解包（处理完当前文件后停止）

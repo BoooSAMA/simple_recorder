@@ -6,6 +6,7 @@ import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 
 import 'package:simple_recorder/app/constant.dart';
+import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
 
 class UnpackResult {
@@ -86,6 +87,20 @@ class TsUnpackService {
         if (ReturnCode.isSuccess(returnCode)) {
           Log.logPrint("解包成功: $outputPath");
           onProgress?.call(1.0);
+
+          // 按设置决定是否删除源 TS 文件
+          if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
+            try {
+              var tsFile = File(tsPath);
+              if (await tsFile.exists()) {
+                await tsFile.delete();
+                Log.logPrint("已删除源 TS 文件: $tsPath");
+              }
+            } catch (e) {
+              Log.logPrint("删除源 TS 文件失败: $e");
+            }
+          }
+
           completer.complete(UnpackResult(success: true, path: tsPath));
         } else if (ReturnCode.isCancel(returnCode)) {
           completer.complete(UnpackResult(

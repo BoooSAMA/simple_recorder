@@ -540,10 +540,22 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
                               ],
                             ),
                           ),
+                          const PopupMenuItem(
+                            value: "live_duration",
+                            child: Row(
+                              children: [
+                                Icon(Icons.timer_outlined, size: 18),
+                                SizedBox(width: 8),
+                                Text("获取开播时长"),
+                              ],
+                            ),
+                          ),
                         ],
                       ).then((value) {
                         if (value == "delete") {
                           controller.removeFollow(user);
+                        } else if (value == "live_duration") {
+                          controller.getLiveDuration(user);
                         }
                       });
                     },

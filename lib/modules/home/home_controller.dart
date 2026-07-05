@@ -245,32 +245,38 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     filterData();
   }
 
-  /// 高并发检查所有直播间直播状态（流式并发，始终保持 N 个请求在飞）
+  /// 分批检测所有直播间直播状态：Pinned 用户优先，其余延迟错峰
   Future<void> checkAllLiveStatus() async {
     if (followList.isEmpty) return;
 
     isLoading.value = true;
     loadProgress.value = 0.0;
 
-    final users = followList.toList();
+    final allUsers = followList.toList();
+    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
     final liveIds = <String>{};
     int completed = 0;
-    const maxConcurrency = 20;
+    const maxConcurrency = 5;
+    final total = allUsers.length;
 
     // 不预重置状态 — 保持旧状态直到新结果返回，避免闪烁
-    for (final user in users) {
+    for (final user in allUsers) {
       if (user.liveStatus.value == 0) {
         user.liveStatus.value = 1;
       }
     }
 
-    int cursor = 0;
-    final futures = <Future<void>>[];
+    // 共享任务队列，支持分批动态追加
+    final queue = <FollowUser>[];
 
-    // 流式并发：每个 worker 处理一个后自动取下一个，始终保持 maxConcurrency 个在飞
     Future<void> runWorker() async {
-      while (cursor < users.length) {
-        final user = users[cursor++];
+      while (true) {
+        FollowUser? user;
+        if (queue.isNotEmpty) {
+          user = queue.removeAt(0);
+        }
+        if (user == null) break;
+
         try {
           var site = Sites.getSite(user.siteId);
           if (site == null) continue;
@@ -280,7 +286,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           if (isLive) {
             liveIds.add(user.id);
           } else {
-            // 非直播状态：若正在录制则自动停止（直播间已结束，停止无意义录制）
+            // 非直播状态：若正在录制则自动停止
             if (RecordingManager.instance.isRecording(user.id)) {
               Log.logPrint("检测到直播已结束，自动停止录制: ${user.userName}");
               await RecordingManager.instance.stopRecording(user.id);
@@ -291,18 +297,46 @@ class HomeController extends GetxController with WidgetsBindingObserver {
           user.liveStatus.value = 0;
         } finally {
           completed++;
-          loadProgress.value = completed / users.length;
-          _syncLists(users, liveIds);
+          loadProgress.value = completed / total;
+          _syncLists(allUsers, liveIds);
         }
       }
     }
 
-    // 启动 maxConcurrency 个并行 worker
-    for (var i = 0; i < maxConcurrency; i++) {
-      futures.add(runWorker());
+    Future<void> drainQueue() async {
+      if (queue.isEmpty) return;
+      final workerCount = maxConcurrency < queue.length ? maxConcurrency : queue.length;
+      final futures = <Future<void>>[];
+      for (var i = 0; i < workerCount; i++) {
+        futures.add(runWorker());
+      }
+      await Future.wait(futures);
     }
 
-    await Future.wait(futures);
+    if (pinnedIds.isNotEmpty) {
+      // ---- 第一批：Pinned 用户优先检测 ----
+      for (final user in allUsers) {
+        if (pinnedIds.contains(user.id)) {
+          queue.add(user);
+        }
+      }
+      await drainQueue();
+
+      // ---- 第二批：其余用户延迟错峰 ----
+      if (completed < total) {
+        await Future.delayed(const Duration(seconds: 2));
+        for (final user in allUsers) {
+          if (!pinnedIds.contains(user.id)) {
+            queue.add(user);
+          }
+        }
+        await drainQueue();
+      }
+    } else {
+      // 没有 Pinned 用户，直接全部检测（无延迟）
+      queue.addAll(allUsers);
+      await drainQueue();
+    }
 
     filterData();
     isLoading.value = false;
@@ -336,6 +370,59 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _syncPoller();
       _checkPinnedLiveStatus(notify: true);
+    }
+  }
+
+  /// 获取直播间开播时长信息
+  Future<void> getLiveDuration(FollowUser user) async {
+    var site = Sites.getSite(user.siteId);
+    if (site == null) {
+      Get.snackbar("获取失败", "不支持的平台: ${user.siteId}",
+          snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    try {
+      var detail = await site.liveSite.getRoomDetail(roomId: user.roomId);
+      if (!detail.status) {
+        Get.snackbar("未开播", "${user.userName} 当前未在直播",
+            snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+
+      if (detail.showTime != null && detail.showTime!.isNotEmpty) {
+        try {
+          int startTimeStamp = int.parse(detail.showTime!);
+          var startDt =
+              DateTime.fromMillisecondsSinceEpoch(startTimeStamp * 1000);
+          var timeStr =
+              '${startDt.hour.toString().padLeft(2, '0')}:${startDt.minute.toString().padLeft(2, '0')}:${startDt.second.toString().padLeft(2, '0')}';
+
+          int currentTimeStamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+          int diff = currentTimeStamp - startTimeStamp;
+          if (diff > 0) {
+            int hours = diff ~/ 3600;
+            int minutes = (diff % 3600) ~/ 60;
+            int seconds = diff % 60;
+            Get.snackbar(
+              "直播信息 · ${user.userName}",
+              "开播时间: $timeStr\n已播时长: $hours小时$minutes分$seconds秒",
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 5),
+            );
+            return;
+          }
+        } catch (_) {}
+      }
+
+      Get.snackbar(
+        "直播信息 · ${user.userName}",
+        "该平台暂不支持查询开播时长",
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      Get.snackbar("获取失败", e.toString(),
+          snackPosition: SnackPosition.BOTTOM);
     }
   }
 
