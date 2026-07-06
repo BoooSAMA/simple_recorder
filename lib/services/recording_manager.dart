@@ -11,7 +11,7 @@ class RecordingManager extends GetxService {
   final RxList<RecordingSession> activeSessions = RxList<RecordingSession>();
   final RxInt activeCount = 0.obs;
 
-  int get maxConcurrent => 15;
+  int get maxConcurrent => 20;
 
   bool canStartNew() {
     return activeSessions.length < maxConcurrent;
@@ -50,7 +50,16 @@ class RecordingManager extends GetxService {
       activeSessions.remove(session);
       activeCount.value = activeSessions.length;
     };
-    await session.start();
+
+    try {
+      await session.start();
+    } catch (e) {
+      // start() 抛异常 → 清理 session，让异常继续传播
+      Log.logPrint("session 启动异常: ${session.taskId}, $e");
+      activeSessions.remove(session);
+      activeCount.value = activeSessions.length;
+      rethrow;
+    }
 
     // 如果 start() 未抛异常但 session 实际未启动（如无播放地址），清理它
     if (!session.isRecording.value && activeSessions.contains(session)) {
@@ -96,6 +105,21 @@ class RecordingManager extends GetxService {
     await session.cancel();
     activeSessions.remove(session);
     activeCount.value = activeSessions.length;
+  }
+
+  /// 清理所有 isRecording=false 的残留 session（刷新/启动时调用）
+  void cleanupStaleSessions() {
+    var removed = 0;
+    for (var session in activeSessions.toList()) {
+      if (!session.isRecording.value) {
+        activeSessions.remove(session);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      activeCount.value = activeSessions.length;
+      Log.logPrint("清理了 $removed 个停滞录制会话");
+    }
   }
 
   void stopAll() {

@@ -8,11 +8,13 @@ import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/modules/ts_unpack/ts_unpack_service.dart';
+import 'package:simple_recorder/services/recording_manager.dart';
 
 class FileItem {
   final String path;
   final String fileName;
   final bool isInterrupted;
+  final bool isRecording;
   final RxBool isUnpacked;
   final RxBool isSelected;
 
@@ -20,6 +22,7 @@ class FileItem {
     required this.path,
     required this.fileName,
     required this.isInterrupted,
+    required this.isRecording,
     required bool isUnpacked,
     bool selected = false,
   })  : isUnpacked = RxBool(isUnpacked),

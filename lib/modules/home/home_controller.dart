@@ -249,6 +249,9 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Future<void> checkAllLiveStatus() async {
     if (followList.isEmpty) return;
 
+    // 每次刷新先清理停滞 session，保证录制计数实时准确
+    RecordingManager.instance.cleanupStaleSessions();
+
     isLoading.value = true;
     loadProgress.value = 0.0;
 
