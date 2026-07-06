@@ -14,7 +14,6 @@ class FileItem {
   final String path;
   final String fileName;
   final bool isInterrupted;
-  final bool isRecording;
   final RxBool isUnpacked;
   final RxBool isSelected;
 
@@ -22,11 +21,17 @@ class FileItem {
     required this.path,
     required this.fileName,
     required this.isInterrupted,
-    required this.isRecording,
     required bool isUnpacked,
     bool selected = false,
   })  : isUnpacked = RxBool(isUnpacked),
         isSelected = RxBool(selected);
+
+  /// 动态判断该文件当前是否正在被录制
+  bool get isRecording {
+    return RecordingManager.instance.activeSessions.any(
+      (s) => s.outputPath == path && s.isRecording.value,
+    );
+  }
 
   /// 文件大小（格式化）
   String get fileSize {
@@ -68,12 +73,12 @@ class TsUnpackController extends GetxController {
   final currentFileName = "".obs;
   final hasSavePath = true.obs;
 
-  /// 计算选中的文件总数（不含已解包的）
+  /// 计算选中的文件总数（不含已解包和录制中的）
   int get selectedCount {
     int count = 0;
     for (var group in groups) {
       for (var file in group.files) {
-        if (file.isSelected.value && !file.isUnpacked.value) count++;
+        if (file.isSelected.value && !file.isUnpacked.value && !file.isRecording) count++;
       }
     }
     return count;
@@ -152,7 +157,7 @@ class TsUnpackController extends GetxController {
   void selectAll() {
     for (var group in groups) {
       for (var file in group.files) {
-        if (!file.isUnpacked.value) {
+        if (!file.isUnpacked.value && !file.isRecording) {
           file.isSelected.value = true;
         }
       }
@@ -259,7 +264,7 @@ class TsUnpackController extends GetxController {
     var selectedFiles = <FileItem>[];
     for (var group in groups) {
       for (var file in group.files) {
-        if (file.isSelected.value && !file.isUnpacked.value) {
+        if (file.isSelected.value && !file.isUnpacked.value && !file.isRecording) {
           selectedFiles.add(file);
         }
       }

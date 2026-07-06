@@ -135,6 +135,8 @@ class TsUnpackPage extends StatelessWidget {
             Obx(() {
               var isExpanded = group.isExpanded.value;
               var hasInterrupted = group.interruptedCount > 0;
+              var recordingCount =
+                  group.files.where((f) => f.isRecording).length;
               return InkWell(
                 onTap: () => controller.toggleGroup(groupIndex),
                 child: Container(
@@ -185,6 +187,25 @@ class TsUnpackPage extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 11,
                               color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (recordingCount > 0) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withAlpha(25),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            "● $recordingCount",
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.orange,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -252,7 +273,7 @@ class TsUnpackPage extends StatelessWidget {
     return Obx(() {
       var isUnpacked = file.isUnpacked.value;
       var isSelected = file.isSelected.value;
-      var canSelect = !isUnpacked;
+      var canSelect = !isUnpacked && !file.isRecording;
 
       return InkWell(
         onTap: canSelect
@@ -261,9 +282,11 @@ class TsUnpackPage extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
-            color: file.isInterrupted && !isUnpacked
-                ? Colors.red.withAlpha(8)
-                : null,
+            color: file.isRecording
+                ? Colors.orange.withAlpha(12)
+                : file.isInterrupted && !isUnpacked
+                    ? Colors.red.withAlpha(8)
+                    : null,
             border: index < total - 1
                 ? Border(
                     bottom: BorderSide(
@@ -339,6 +362,23 @@ class TsUnpackPage extends StatelessWidget {
                               ),
                             ),
                           ),
+                        if (file.isRecording)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 0),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withAlpha(25),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              "录制中",
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.orange,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
                         if (isUnpacked)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -364,17 +404,21 @@ class TsUnpackPage extends StatelessWidget {
 
               // 文件图标
               Icon(
-                file.isInterrupted && !isUnpacked
-                    ? Icons.warning_amber_rounded
-                    : isUnpacked
-                        ? Icons.check_circle_outline
-                        : Icons.insert_drive_file_outlined,
+                file.isRecording
+                    ? Icons.fiber_manual_record
+                    : file.isInterrupted && !isUnpacked
+                        ? Icons.warning_amber_rounded
+                        : isUnpacked
+                            ? Icons.check_circle_outline
+                            : Icons.insert_drive_file_outlined,
                 size: 16,
-                color: file.isInterrupted && !isUnpacked
-                    ? Colors.red
-                    : isUnpacked
-                        ? (isSelected ? Colors.orange : Colors.green)
-                        : theme.colorScheme.onSurface.withAlpha(80),
+                color: file.isRecording
+                    ? Colors.orange
+                    : file.isInterrupted && !isUnpacked
+                        ? Colors.red
+                        : isUnpacked
+                            ? (isSelected ? Colors.orange : Colors.green)
+                            : theme.colorScheme.onSurface.withAlpha(80),
               ),
             ],
           ),
