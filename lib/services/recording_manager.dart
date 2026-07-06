@@ -11,6 +11,9 @@ class RecordingManager extends GetxService {
   final RxList<RecordingSession> activeSessions = RxList<RecordingSession>();
   final RxInt activeCount = 0.obs;
 
+  /// session 自然结束时广播事件，供续录等外部逻辑监听
+  final onSessionEnded = StreamController<RecordingSession>.broadcast();
+
   int get maxConcurrent => 20;
 
   bool canStartNew() {
@@ -49,6 +52,7 @@ class RecordingManager extends GetxService {
     session.onFinished = () {
       activeSessions.remove(session);
       activeCount.value = activeSessions.length;
+      onSessionEnded.add(session);
     };
 
     try {
@@ -142,6 +146,7 @@ class RecordingManager extends GetxService {
   @override
   void onClose() {
     stopAll();
+    onSessionEnded.close();
     super.onClose();
   }
 }

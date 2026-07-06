@@ -31,6 +31,11 @@ class AppSettingsController extends GetxController {
   final autoSliceEnabled = false.obs;
   final autoSliceIntervalMinutes = 30.obs;
 
+  /// 直播恢复自动续录
+  final autoReRecordEnabled = false.obs;
+  final autoReRecordDelayMinutes = 5.obs;
+  final autoReRecordMaxRetries = 3.obs;
+
   /// 置顶的直播间 ID 集合
   var pinnedFollowIds = <String>{}.obs;
 
@@ -72,6 +77,12 @@ class AppSettingsController extends GetxController {
         .getValue("auto_slice_enabled", false);
     autoSliceIntervalMinutes.value = LocalStorageService.instance
         .getValue("auto_slice_interval", 30);
+    autoReRecordEnabled.value = LocalStorageService.instance
+        .getValue("auto_rerecord_enabled", false);
+    autoReRecordDelayMinutes.value = LocalStorageService.instance
+        .getValue("auto_rerecord_delay", 5);
+    autoReRecordMaxRetries.value = LocalStorageService.instance
+        .getValue("auto_rerecord_max_retries", 3);
   }
 
   /// 加载置顶直播间 ID 列表
@@ -185,5 +196,22 @@ class AppSettingsController extends GetxController {
     final clamped = minutes.clamp(1, 240);
     autoSliceIntervalMinutes.value = clamped;
     LocalStorageService.instance.setValue("auto_slice_interval", clamped);
+  }
+
+  void setAutoReRecordEnabled(bool value) {
+    autoReRecordEnabled.value = value;
+    LocalStorageService.instance.setValue("auto_rerecord_enabled", value);
+  }
+
+  void setAutoReRecordDelayMinutes(int minutes) {
+    final clamped = minutes.clamp(1, 30);
+    autoReRecordDelayMinutes.value = clamped;
+    LocalStorageService.instance.setValue("auto_rerecord_delay", clamped);
+  }
+
+  void setAutoReRecordMaxRetries(int retries) {
+    final clamped = retries.clamp(1, 10);
+    autoReRecordMaxRetries.value = clamped;
+    LocalStorageService.instance.setValue("auto_rerecord_max_retries", clamped);
   }
 }

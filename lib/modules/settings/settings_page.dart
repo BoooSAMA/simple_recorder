@@ -90,6 +90,62 @@ class SettingsPage extends StatelessWidget {
                     ),
                   );
                 }),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("直播恢复自动续录"),
+                      subtitle: const Text("直播结束后自动检测主播是否重新开播并恢复录制"),
+                      value: controller.autoReRecordEnabled.value,
+                      onChanged: (v) =>
+                          controller.setAutoReRecordEnabled(v),
+                    )),
+                Obx(() {
+                  var enabled = controller.autoReRecordEnabled.value;
+                  var delay = controller.autoReRecordDelayMinutes.value;
+                  return Opacity(
+                    opacity: enabled ? 1.0 : 0.4,
+                    child: AbsorbPointer(
+                      absorbing: !enabled,
+                      child: SettingsNumber(
+                        title: "检测间隔",
+                        value: delay,
+                        min: 1,
+                        max: 30,
+                        step: 1,
+                        unit: " 分钟",
+                        displayValue: "$delay 分钟",
+                        subtitle: "直播断开后多久检测一次 (1~30)",
+                        onChanged: enabled
+                            ? (v) =>
+                                controller.setAutoReRecordDelayMinutes(v)
+                            : null,
+                      ),
+                    ),
+                  );
+                }),
+                Obx(() {
+                  var enabled = controller.autoReRecordEnabled.value;
+                  var retries = controller.autoReRecordMaxRetries.value;
+                  return Opacity(
+                    opacity: enabled ? 1.0 : 0.4,
+                    child: AbsorbPointer(
+                      absorbing: !enabled,
+                      child: SettingsNumber(
+                        title: "最大检测次数",
+                        value: retries,
+                        min: 1,
+                        max: 10,
+                        step: 1,
+                        unit: " 次",
+                        displayValue: "$retries 次",
+                        subtitle: "最多检测几次后放弃 (1~10)",
+                        onChanged: enabled
+                            ? (v) =>
+                                controller.setAutoReRecordMaxRetries(v)
+                            : null,
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
           ),

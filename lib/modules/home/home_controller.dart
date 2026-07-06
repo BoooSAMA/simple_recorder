@@ -13,6 +13,24 @@ import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_recorder/services/recording_service.dart';
 import 'package:simple_recorder/services/live_notification_service.dart';
 
+/// 续录队列条目
+class _ReRecordTask {
+  final String userId;
+  final String roomId;
+  final String siteId;
+  final String userName;
+  int retriesLeft;
+  Timer? timer;
+
+  _ReRecordTask({
+    required this.userId,
+    required this.roomId,
+    required this.siteId,
+    required this.userName,
+    required this.retriesLeft,
+  });
+}
+
 class HomeController extends GetxController with WidgetsBindingObserver {
   final followList = <FollowUser>[].obs;
   final liveList = <FollowUser>[].obs;
@@ -33,6 +51,8 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Timer? _livePoller;
   StreamSubscription<dynamic>? _pinSubscription;
   bool _firstPinCheckDone = false;
+  StreamSubscription<RecordingSession>? _reRecordSub;
+  final _reRecordQueue = <_ReRecordTask>[];
 
   /// 当前显示列表中的置顶直播间数量
   int get pinnedCount {
@@ -96,6 +116,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         EventBus.instance.listen(Constant.kPinnedFollowChanged, (_) {
       _syncPoller();
     });
+    _reRecordSub = RecordingManager.instance.onSessionEnded.stream.listen(_onSessionEnded);
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -114,6 +135,8 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     _followSubscription?.cancel();
     _livePoller?.cancel();
     _pinSubscription?.cancel();
+    _reRecordSub?.cancel();
+    _cancelAllReRecord();
     WidgetsBinding.instance.removeObserver(this);
     super.onClose();
   }
@@ -195,6 +218,107 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       if (!aPinned && bPinned) return 1;
       return 0;
     });
+  }
+
+  // ========== 直播恢复自动续录 ==========
+
+  void _onSessionEnded(RecordingSession session) {
+    final settings = AppSettingsController.instance;
+    if (!settings.autoReRecordEnabled.value) return;
+    if (session.isUserStopped) {
+      Log.logPrint("用户主动停止，不触发续录: ${session.userName}");
+      return;
+    }
+    // 避免重复加入
+    if (_reRecordQueue.any((t) => t.userId == session.taskId)) return;
+    // 确认该用户仍在关注列表
+    final user = followList.firstWhereOrNull((u) => u.id == session.taskId);
+    if (user == null) return;
+
+    final task = _ReRecordTask(
+      userId: session.taskId,
+      roomId: session.roomId,
+      siteId: session.siteId,
+      userName: session.userName,
+      retriesLeft: settings.autoReRecordMaxRetries.value,
+    );
+    _reRecordQueue.add(task);
+    Log.logPrint("加入续录队列: ${session.userName}, "
+        "${settings.autoReRecordDelayMinutes}分钟后第1次检测, "
+        "共${settings.autoReRecordMaxRetries.value}次");
+
+    _scheduleReRecordCheck(task);
+  }
+
+  void _scheduleReRecordCheck(_ReRecordTask task) {
+    final delay = AppSettingsController.instance.autoReRecordDelayMinutes.value;
+    task.timer?.cancel();
+    task.timer = Timer(Duration(minutes: delay), () => _processReRecordTask(task));
+  }
+
+  Future<void> _processReRecordTask(_ReRecordTask task) async {
+    // 用户已不在关注列表中
+    if (!followList.any((u) => u.id == task.userId)) {
+      _removeFromReRecordQueue(task);
+      Log.logPrint("续录取消: 用户已不在关注列表: ${task.userName}");
+      return;
+    }
+
+    // 用户已在录制中（可能是手动启动的）
+    if (RecordingManager.instance.isRecording(task.userId)) {
+      _removeFromReRecordQueue(task);
+      Log.logPrint("续录取消: 用户已在录制中: ${task.userName}");
+      return;
+    }
+
+    try {
+      final site = Sites.getSite(task.siteId);
+      if (site == null) {
+        _removeFromReRecordQueue(task);
+        return;
+      }
+
+      final isLive = await site.liveSite.getLiveStatus(roomId: task.roomId);
+      if (isLive) {
+        Log.logPrint("续录: 检测到主播重新开播，开始录制: ${task.userName}");
+        final user = followList.firstWhereOrNull((u) => u.id == task.userId);
+        if (user != null) {
+          // _autoStartRecording 内部检查 liveStatus == 2，必须在调用前设置
+          user.liveStatus.value = 2;
+          await _autoStartRecording(user);
+          filterData();
+        }
+        _removeFromReRecordQueue(task);
+        return;
+      }
+    } catch (e) {
+      Log.logPrint("续录检测失败: ${task.userName} - $e");
+    }
+
+    // 未检测到开播
+    task.retriesLeft--;
+    if (task.retriesLeft <= 0) {
+      Log.logPrint("续录放弃: 已达最大检测次数: ${task.userName}");
+      _removeFromReRecordQueue(task);
+    } else {
+      final settings = AppSettingsController.instance;
+      final attemptIndex = settings.autoReRecordMaxRetries.value - task.retriesLeft + 1;
+      Log.logPrint("续录: ${task.userName} 未开播，"
+          "${settings.autoReRecordDelayMinutes}分钟后第$attemptIndex次检测");
+      _scheduleReRecordCheck(task);
+    }
+  }
+
+  void _removeFromReRecordQueue(_ReRecordTask task) {
+    task.timer?.cancel();
+    _reRecordQueue.remove(task);
+  }
+
+  void _cancelAllReRecord() {
+    for (final task in _reRecordQueue) {
+      task.timer?.cancel();
+    }
+    _reRecordQueue.clear();
   }
 
   Future<void> _checkPinnedLiveStatus({bool notify = false}) async {

@@ -408,6 +408,9 @@ class RecordingSession {
   int _sliceIntervalSeconds = 0;
   bool _stopRequested = false;
 
+  /// 是否为用户主动停止（而非直播结束/重试耗尽导致的自然结束）
+  bool get isUserStopped => _stopRequested;
+
   Future<void> _onFinished() async {
     if (_finished) return; // 防止重入（retry + cancel 双路径可能同时触发）
     _finished = true;
