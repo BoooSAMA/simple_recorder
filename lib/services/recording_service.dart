@@ -214,6 +214,12 @@ class RecordingSession {
     _startTime = DateTime.now();
     _discardRequested = false;
     _retries = 0;
+    _stopRequested = false;
+
+    // 读取切片设置
+    var sliceEnabled = AppSettingsController.instance.autoSliceEnabled.value;
+    var sliceMinutes = AppSettingsController.instance.autoSliceIntervalMinutes.value;
+    _sliceIntervalSeconds = (sliceEnabled && sliceMinutes > 0) ? sliceMinutes * 60 : 0;
 
     // 优化：文件大小每 5 秒轮询一次，时长每秒更新
     var sizeTickCounter = 0;
@@ -242,6 +248,14 @@ class RecordingSession {
           lastError.value = "录制异常：长时间无数据写入（可能服务器限流）";
           Log.logPrint("录制停滞预警: $_outputPath, ${_seconds}s");
         }
+      }
+      // 切片检测：达到设定秒数时自动切分
+      if (!_isSlicing && _sliceIntervalSeconds > 0 && _seconds > 0 &&
+          _seconds % _sliceIntervalSeconds == 0) {
+        _isSlicing = true;
+        Log.logPrint("自动切片触发: $_outputPath, 已录制 ${_seconds}s");
+        _doCancelFFmpeg();
+        return;
       }
       sizeTickCounter++;
     });
@@ -344,6 +358,7 @@ class RecordingSession {
   }
 
   Future<void> stop() async {
+    _stopRequested = true;
     _discardRequested = false;
     _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
@@ -351,6 +366,7 @@ class RecordingSession {
   }
 
   Future<void> cancel() async {
+    _stopRequested = true;
     _discardRequested = true;
     _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
@@ -388,6 +404,9 @@ class RecordingSession {
 
   bool _finished = false;
   bool _isInterrupted = false;
+  bool _isSlicing = false;
+  int _sliceIntervalSeconds = 0;
+  bool _stopRequested = false;
 
   Future<void> _onFinished() async {
     if (_finished) return; // 防止重入（retry + cancel 双路径可能同时触发）
@@ -399,6 +418,27 @@ class RecordingSession {
         await _autoUnpackToTargetFormat();
       }
     }
+
+    // === 切片分支：切片时重置状态并重新开始，不通知 manager ===
+    if (_isSlicing && !_stopRequested) {
+      _isSlicing = false;
+      _finished = false; // 允许下次切片或完成
+      _startTime = null;
+      _sessionId = null;
+      _timer?.cancel();
+      _timer = null;
+      isRecording.value = false;
+      // 释放引用计数（让 start() 重新获取，保持平衡）
+      _releaseWakelock();
+      _releaseForegroundService();
+      // 刷新播放地址，避免旧 URL 过期
+      await _onRefreshPlayUrl?.call();
+      Log.logPrint("切片完成，开始下一段录制");
+      start();
+      return;
+    }
+
+    // === 正常结束流程 ===
     _startTime = null;
     _timer?.cancel();
     _timer = null;

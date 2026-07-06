@@ -7,6 +7,7 @@ import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/follow_export_service.dart';
 import 'package:simple_recorder/widgets/settings/settings_action.dart';
 import 'package:simple_recorder/widgets/settings/settings_card.dart';
+import 'package:simple_recorder/widgets/settings/settings_number.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -57,6 +58,38 @@ class SettingsPage extends StatelessWidget {
                       onChanged: (v) =>
                           controller.setDeleteTsAfterUnpack(v),
                     )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("自动切片录制"),
+                      subtitle: const Text("按设定间隔自动切分并解包 TS 文件"),
+                      value: controller.autoSliceEnabled.value,
+                      onChanged: (v) =>
+                          controller.setAutoSliceEnabled(v),
+                    )),
+                Obx(() {
+                  var enabled = controller.autoSliceEnabled.value;
+                  var interval = controller.autoSliceIntervalMinutes.value;
+                  return Opacity(
+                    opacity: enabled ? 1.0 : 0.4,
+                    child: AbsorbPointer(
+                      absorbing: !enabled,
+                      child: SettingsNumber(
+                        title: "切片间隔",
+                        value: interval,
+                        min: 1,
+                        max: 240,
+                        step: 10,
+                        unit: " 分钟",
+                        displayValue: "$interval 分钟",
+                        subtitle: "范围 1~240 分钟",
+                        onChanged: enabled
+                            ? (v) =>
+                                controller.setAutoSliceIntervalMinutes(v)
+                            : null,
+                      ),
+                    ),
+                  );
+                }),
               ],
             ),
           ),

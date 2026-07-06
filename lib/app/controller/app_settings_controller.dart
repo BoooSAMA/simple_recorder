@@ -27,6 +27,10 @@ class AppSettingsController extends GetxController {
   /// 自动解包后是否删除源 TS 文件
   final deleteTsAfterUnpack = true.obs;
 
+  /// 自动切片录制
+  final autoSliceEnabled = false.obs;
+  final autoSliceIntervalMinutes = 30.obs;
+
   /// 置顶的直播间 ID 集合
   var pinnedFollowIds = <String>{}.obs;
 
@@ -64,6 +68,10 @@ class AppSettingsController extends GetxController {
         .getValue("audio_format", Constant.kAudioFormatM4A);
     deleteTsAfterUnpack.value = LocalStorageService.instance
         .getValue("delete_ts_after_unpack", true);
+    autoSliceEnabled.value = LocalStorageService.instance
+        .getValue("auto_slice_enabled", false);
+    autoSliceIntervalMinutes.value = LocalStorageService.instance
+        .getValue("auto_slice_interval", 30);
   }
 
   /// 加载置顶直播间 ID 列表
@@ -166,5 +174,16 @@ class AppSettingsController extends GetxController {
   void setDeleteTsAfterUnpack(bool value) {
     deleteTsAfterUnpack.value = value;
     LocalStorageService.instance.setValue("delete_ts_after_unpack", value);
+  }
+
+  void setAutoSliceEnabled(bool value) {
+    autoSliceEnabled.value = value;
+    LocalStorageService.instance.setValue("auto_slice_enabled", value);
+  }
+
+  void setAutoSliceIntervalMinutes(int minutes) {
+    final clamped = minutes.clamp(1, 240);
+    autoSliceIntervalMinutes.value = clamped;
+    LocalStorageService.instance.setValue("auto_slice_interval", clamped);
   }
 }
