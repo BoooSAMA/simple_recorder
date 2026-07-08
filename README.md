@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="logo.png" alt="Simple Recorder" width="120"/>
+</p>
+
 # Simple Recorder
 
 > **多平台直播音频录制工具** — 基于 Flutter 构建，支持 Bilibili / 抖音 / 斗鱼 / 虎牙 / 猫耳FM 多平台直播间音频录制。
