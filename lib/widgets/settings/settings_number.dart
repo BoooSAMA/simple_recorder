@@ -11,6 +11,7 @@ class SettingsNumber extends StatelessWidget {
   final int max;
   final String? displayValue;
   final Function(int)? onChanged;
+  final bool showTextInput;
 
   const SettingsNumber({
     required this.title,
@@ -22,6 +23,7 @@ class SettingsNumber extends StatelessWidget {
     this.min = 0,
     this.unit = '',
     this.displayValue,
+    this.showTextInput = false,
     super.key,
   });
 
@@ -86,6 +88,7 @@ class SettingsNumber extends StatelessWidget {
 
   void openSlider(BuildContext context) {
     var newValue = value.obs;
+    final textController = TextEditingController(text: "$value");
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -111,12 +114,40 @@ class SettingsNumber extends StatelessWidget {
                   value: newValue.value.toDouble(),
                   min: min.toDouble(),
                   max: max.toDouble(),
-                  onChanged: (e) => newValue.value = e.toInt(),
+                  onChanged: (e) {
+                    newValue.value = e.toInt();
+                    textController.text = "${e.toInt()}";
+                  },
                 )),
+            if (showTextInput)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: TextField(
+                  controller: textController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    labelText: "直接输入数值",
+                  ),
+                  onSubmitted: (v) {
+                    final parsed = int.tryParse(v);
+                    if (parsed != null) {
+                      newValue.value = parsed.clamp(min, max);
+                      textController.text = "${newValue.value}";
+                    }
+                  },
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextButton(
                 onPressed: () {
+                  // 确认时也尝试解析未提交的文本输入
+                  final parsed = int.tryParse(textController.text);
+                  if (parsed != null) {
+                    newValue.value = parsed.clamp(min, max);
+                  }
                   onChanged?.call(newValue.value);
                   Get.back();
                 },

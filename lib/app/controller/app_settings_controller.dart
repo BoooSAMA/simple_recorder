@@ -36,6 +36,9 @@ class AppSettingsController extends GetxController {
   final autoReRecordDelayMinutes = 5.obs;
   final autoReRecordMaxRetries = 3.obs;
 
+  /// 直播状态检测并发数（5~50）
+  final liveCheckConcurrency = 5.obs;
+
   /// 置顶的直播间 ID 集合
   var pinnedFollowIds = <String>{}.obs;
 
@@ -83,6 +86,8 @@ class AppSettingsController extends GetxController {
         .getValue("auto_rerecord_delay", 5);
     autoReRecordMaxRetries.value = LocalStorageService.instance
         .getValue("auto_rerecord_max_retries", 3);
+    liveCheckConcurrency.value = LocalStorageService.instance
+        .getValue("live_check_concurrency", 5);
   }
 
   /// 加载置顶直播间 ID 列表
@@ -213,5 +218,11 @@ class AppSettingsController extends GetxController {
     final clamped = retries.clamp(1, 10);
     autoReRecordMaxRetries.value = clamped;
     LocalStorageService.instance.setValue("auto_rerecord_max_retries", clamped);
+  }
+
+  void setLiveCheckConcurrency(int limit) {
+    final clamped = limit.clamp(5, 50);
+    liveCheckConcurrency.value = clamped;
+    LocalStorageService.instance.setValue("live_check_concurrency", clamped);
   }
 }

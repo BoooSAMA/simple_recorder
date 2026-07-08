@@ -35,13 +35,25 @@ class SettingsPage extends StatelessWidget {
                       onChanged: (v) => controller.setAutoSaveToFolder(v),
                     )),
                 const Divider(height: 1, indent: 16),
-                Obx(() => SettingsAction(
-                      title: "开播通知",
-                      value: controller.liveNotificationEnabled.value
-                          ? "已开启 (${controller.livePollInterval.value}分钟)"
-                          : "已关闭",
-                      onTap: () =>
-                          Get.toNamed(RoutePath.kLiveNotification),
+                Obx(() => SwitchListTile(
+                      title: const Text("按主播名自动创建文件夹"),
+                      subtitle: const Text("保存时自动存进主播名称的文件夹"),
+                      value: controller.autoSaveToFolder.value,
+                      onChanged: (v) => controller.setAutoSaveToFolder(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SettingsNumber(
+                      title: "直播状态检测并发数",
+                      value: controller.liveCheckConcurrency.value,
+                      min: 5,
+                      max: 50,
+                      step: 5,
+                      unit: " 路",
+                      displayValue: "${controller.liveCheckConcurrency.value} 路",
+                      subtitle: "同时检测的直播间数量 (5~50)，越高越快但更耗流量",
+                      showTextInput: true,
+                      onChanged: (v) =>
+                          controller.setLiveCheckConcurrency(v),
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SettingsAction(

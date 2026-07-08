@@ -383,7 +383,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
     final liveIds = <String>{};
     int completed = 0;
-    const maxConcurrency = 5;
+    final maxConcurrency = AppSettingsController.instance.liveCheckConcurrency.value;
     final total = allUsers.length;
 
     // 不预重置状态 — 保持旧状态直到新结果返回，避免闪烁
