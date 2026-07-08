@@ -434,10 +434,23 @@ class RecordingSession {
       // 释放引用计数（让 start() 重新获取，保持平衡）
       _releaseWakelock();
       _releaseForegroundService();
-      // 刷新播放地址，避免旧 URL 过期
-      await _onRefreshPlayUrl?.call();
+      // 刷新播放地址（即使刷新失败也继续尝试重启，旧 URL 可能仍有效）
+      try {
+        await _onRefreshPlayUrl?.call();
+      } catch (e) {
+        Log.logPrint("切片刷新播放地址失败(继续尝试): $e");
+      }
       Log.logPrint("切片完成，开始下一段录制");
-      start();
+      try {
+        start();
+      } catch (e) {
+        Log.logPrint("切片重启录制失败，清理会话: $e");
+        // 重启失败时完整清理，防止 session 挂起
+        _releaseWakelock();
+        _releaseForegroundService();
+        _finishCompleter?.complete();
+        onFinished?.call();
+      }
       return;
     }
 
