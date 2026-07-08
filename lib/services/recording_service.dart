@@ -180,11 +180,11 @@ class RecordingSession {
 
   Future<void> start() async {
     if (isRecording.value) return;
-    _finished = false; // 重置完成标志，允许 session 复用
+    _finished = false;
+    _sessionGeneration++; // 标记旧 FFmpeg 回调为过期
 
-    // 录制开始时获取唤醒锁，保持屏幕常亮 + 阻止 CPU 休眠
+    // 获取唤醒锁和前台服务
     await _acquireWakelock();
-    // 启动前台服务，防止系统杀死后台录制进程
     await _acquireForegroundService();
 
     var playUrl = _getPlayUrl?.call() ?? "";
@@ -253,8 +253,25 @@ class RecordingSession {
       if (!_isSlicing && _sliceIntervalSeconds > 0 && _seconds > 0 &&
           _seconds % _sliceIntervalSeconds == 0) {
         _isSlicing = true;
-        Log.logPrint("自动切片触发: $_outputPath, 已录制 ${_seconds}s");
-        _doCancelFFmpeg();
+        var slicePath = _outputPath;
+        Log.logPrint("自动切片触发: $slicePath, 已录制 ${_seconds}s");
+        // 1. 取消当前定时器，防止切片进行中再次触发
+        _timer?.cancel();
+        _timer = null;
+        // 2. 取消 FFmpeg 进程（发送信号让它正常退出、写入文件尾）
+        if (_sessionId != null) {
+          FFmpegKit.cancel(_sessionId);
+          _sessionId = null;
+        }
+        isRecording.value = false;
+        // 3. 给 FFmpeg 一点时间完成退出清理，然后直接走切片完成流程
+        //    不依赖 FFmpegKit 的异步回调（某些情况下回调可能丢失）
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (_isSlicing) {
+            Log.logPrint("切片: FFmpeg 已停止，调用 _onFinished");
+            _onFinished();
+          }
+        });
         return;
       }
       sizeTickCounter++;
@@ -293,9 +310,16 @@ class RecordingSession {
       Log.logPrint("开始录音: ${args.join(' ')}");
     }
 
+    // 记录当前代际编号，回调中检查是否已过期
+    // 防止切片重启后旧回调误操作新 session 的文件/状态
+    var capturedGen = _sessionGeneration;
+
     var session = await FFmpegKit.executeWithArgumentsAsync(
       args,
       (session) async {
+        // 如果代际编号已过期，说明这个回调属于旧 session，忽略
+        if (capturedGen != _sessionGeneration) return;
+
         var returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode)) {
           Log.logPrint("录音成功完成: $_outputPath");
@@ -408,6 +432,11 @@ class RecordingSession {
   int _sliceIntervalSeconds = 0;
   bool _stopRequested = false;
 
+  /// FFmpeg session 代际编号，每次 start() 递增。
+  /// 旧 FFmpeg 回调检查此值，如果不再匹配则静默放弃处理，
+  /// 防止切片重启后旧回调误操作新 session 的文件/状态。
+  int _sessionGeneration = 0;
+
   /// 是否为用户主动停止（而非直播结束/重试耗尽导致的自然结束）
   bool get isUserStopped => _stopRequested;
 
@@ -424,8 +453,9 @@ class RecordingSession {
 
     // === 切片分支：切片时重置状态并重新开始，不通知 manager ===
     if (_isSlicing && !_stopRequested) {
+      _sessionGeneration++; // 优先递增代际，阻止旧 FFmpeg 回调进入
       _isSlicing = false;
-      _finished = false; // 允许下次切片或完成
+      _finished = false; // 允许下次切片或完成（旧回调已被代际检查拦截）
       _startTime = null;
       _sessionId = null;
       _timer?.cancel();
