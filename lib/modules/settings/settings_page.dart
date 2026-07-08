@@ -35,11 +35,13 @@ class SettingsPage extends StatelessWidget {
                       onChanged: (v) => controller.setAutoSaveToFolder(v),
                     )),
                 const Divider(height: 1, indent: 16),
-                Obx(() => SwitchListTile(
-                      title: const Text("按主播名自动创建文件夹"),
-                      subtitle: const Text("保存时自动存进主播名称的文件夹"),
-                      value: controller.autoSaveToFolder.value,
-                      onChanged: (v) => controller.setAutoSaveToFolder(v),
+                Obx(() => SettingsAction(
+                      title: "开播通知",
+                      value: controller.liveNotificationEnabled.value
+                          ? "已开启"
+                          : "已关闭",
+                      onTap: () =>
+                          Get.toNamed(RoutePath.kLiveNotification),
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SettingsNumber(
