@@ -583,9 +583,9 @@ class TsUnpackPage extends StatelessWidget {
               onPressed:
                   selected > 0 ? () => controller.startBatchUnpack() : null,
               icon: const Icon(Icons.unarchive, size: 16),
-              label: Text(
-                selected > 0 ? "解包 ($selected)" : "解包",
-                style: const TextStyle(fontSize: 13),
+              label: const Text(
+                "解包",
+                style: TextStyle(fontSize: 13),
               ),
               style: FilledButton.styleFrom(
                 padding:

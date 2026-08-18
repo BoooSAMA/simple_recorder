@@ -44,6 +44,16 @@ class SettingsPage extends StatelessWidget {
                           Get.toNamed(RoutePath.kLiveNotification),
                     )),
                 const Divider(height: 1, indent: 16),
+                Obx(() => SettingsAction(
+                      title: "录制状态检测",
+                      value: controller.recordingStatusCheckEnabled.value
+                          ? "已开启"
+                          : "已关闭",
+                      subtitle: "检测录制文件停滞并自动重启",
+                      onTap: () =>
+                          Get.toNamed(RoutePath.kRecordingHealth),
+                    )),
+                const Divider(height: 1, indent: 16),
                 Obx(() => SettingsNumber(
                       title: "直播状态检测并发数",
                       value: controller.liveCheckConcurrency.value,

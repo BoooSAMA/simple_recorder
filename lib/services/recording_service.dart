@@ -221,6 +221,20 @@ class RecordingSession {
     var sliceMinutes = AppSettingsController.instance.autoSliceIntervalMinutes.value;
     _sliceIntervalSeconds = (sliceEnabled && sliceMinutes > 0) ? sliceMinutes * 60 : 0;
 
+    // 读取录制状态检测设置（变更在下次录制开始时生效）
+    _stallCheckEnabled =
+        AppSettingsController.instance.recordingStatusCheckEnabled.value;
+    _stallCheckIntervalSeconds =
+        AppSettingsController.instance.recordingStatusCheckInterval.value;
+    _stallThresholdSeconds =
+        AppSettingsController.instance.recordingStallThreshold.value;
+    _stallAutoRestart =
+        AppSettingsController.instance.recordingStallAutoRestart.value;
+    _stallMaxRestarts =
+        AppSettingsController.instance.recordingStallMaxRestarts.value;
+    // 注意：不清零 _stallRestartCount/_lastCheckedBytes ——
+    // 停滞自动重启跨 start() 保持计数，由文件恢复增长或会话终结时清零
+
     // 优化：文件大小每 5 秒轮询一次，时长每秒更新
     var sizeTickCounter = 0;
     await _startFFmpegSession(playUrl);
@@ -234,20 +248,10 @@ class RecordingSession {
       var m = (_seconds ~/ 60).toString().padLeft(2, '0');
       var s = (_seconds % 60).toString().padLeft(2, '0');
       duration.value = "$m:$s";
-      // 文件大小每 5 秒轮询一次，减少系统调用
-      if (sizeTickCounter % 5 == 0) {
-        fileSize.value = _formatFileSize(_outputPath);
-        // 停滞检测：服务器限流导致 FFmpeg 无限重连，文件始终 0B
-        if (_seconds > 90 && fileSize.value == "0 B") {
-          lastError.value = "录制停滞，可能服务器限流，已自动结束";
-          Log.logPrint("检测到录制停滞，自动结束: $_outputPath, ${_seconds}s");
-          _onFinished();
-          return;
-        }
-        if (_seconds > 60 && fileSize.value == "0 B") {
-          lastError.value = "录制异常：长时间无数据写入（可能服务器限流）";
-          Log.logPrint("录制停滞预警: $_outputPath, ${_seconds}s");
-        }
+      // 文件大小按设定间隔轮询，减少系统调用
+      if (_stallCheckEnabled &&
+          sizeTickCounter % _stallCheckIntervalSeconds == 0) {
+        _checkFileGrowth();
       }
       // 切片检测：达到设定秒数时自动切分
       if (!_isSlicing && _sliceIntervalSeconds > 0 && _seconds > 0 &&
@@ -392,6 +396,8 @@ class RecordingSession {
   Future<void> cancel() async {
     _stopRequested = true;
     _discardRequested = true;
+    _stallRestartCount = 0;
+    _lastCheckedBytes = -1;
     _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
     await _finishCompleter!.future;
@@ -405,6 +411,8 @@ class RecordingSession {
       _sessionId = null;
     }
     isRecording.value = false;
+    _stallRestartCount = 0;
+    _lastCheckedBytes = -1;
     _releaseWakelock();
     _releaseForegroundService();
     _finishCompleter?.complete();
@@ -432,6 +440,17 @@ class RecordingSession {
   int _sliceIntervalSeconds = 0;
   bool _stopRequested = false;
 
+  /// 录制状态检测（停滞检测）配置快照，start() 时读取
+  bool _stallCheckEnabled = true;
+  int _stallCheckIntervalSeconds = 30;
+  int _stallThresholdSeconds = 60;
+  bool _stallAutoRestart = true;
+  int _stallMaxRestarts = 3;
+
+  /// 停滞检测运行时状态
+  int _stallRestartCount = 0;
+  int _lastCheckedBytes = -1;
+
   /// FFmpeg session 代际编号，每次 start() 递增。
   /// 旧 FFmpeg 回调检查此值，如果不再匹配则静默放弃处理，
   /// 防止切片重启后旧回调误操作新 session 的文件/状态。
@@ -443,6 +462,8 @@ class RecordingSession {
   Future<void> _onFinished() async {
     if (_finished) return; // 防止重入（retry + cancel 双路径可能同时触发）
     _finished = true;
+    _stallRestartCount = 0;
+    _lastCheckedBytes = -1;
     if (_startTime != null && _outputPath.isNotEmpty && !_discardRequested) {
       await _renameFileWithEndTime();
       // 成功完成录音后，自动解包 TS → 目标格式
@@ -565,19 +586,118 @@ class RecordingSession {
     }
   }
 
-  String _formatFileSize(String path) {
+  /// 按字节数格式化文件大小（0B / 1.2k / 34.5m / 1.2g）
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return "${bytes}B";
+    if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)}k";
+    if (bytes < 1024 * 1024 * 1024) {
+      return "${(bytes / (1024 * 1024)).toStringAsFixed(1)}m";
+    }
+    return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}g";
+  }
+
+  /// 周期性检测输出文件是否在正常写入。
+  /// 服务器限流 / 断流时 FFmpeg 可能无限重连，文件长时间不增长，
+  /// 表现为录制超过阈值时间仍为 0B（或大小不再变化）。
+  void _checkFileGrowth() {
+    if (!_stallCheckEnabled) return;
+
+    int bytes = 0;
     try {
-      var file = File(path);
-      if (file.existsSync()) {
-        var bytes = file.lengthSync();
-        if (bytes < 1024) return "${bytes}B";
-        if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)}k";
-        if (bytes < 1024 * 1024 * 1024) {
-          return "${(bytes / (1024 * 1024)).toStringAsFixed(1)}m";
-        }
-        return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}g";
-      }
+      var file = File(_outputPath);
+      bytes = file.existsSync() ? file.lengthSync() : 0;
     } catch (_) {}
-    return "0B";
+    fileSize.value = _formatBytes(bytes);
+
+    // 无增长判定：与上次检测大小相同，且已超过停滞阈值时间
+    final noGrowth =
+        bytes == _lastCheckedBytes && _seconds > _stallThresholdSeconds;
+
+    // 文件恢复增长：重置停滞状态
+    if (bytes > _lastCheckedBytes) {
+      _stallRestartCount = 0;
+    }
+    _lastCheckedBytes = bytes;
+
+    if (noGrowth) {
+      _handleStall();
+    }
+  }
+
+  /// 处理录制停滞（文件长时间无增长）
+  void _handleStall() {
+    if (_stopRequested || _isSlicing || !isRecording.value) return;
+
+    if (_stallAutoRestart && _stallRestartCount < _stallMaxRestarts) {
+      _stallRestartCount++;
+      lastError.value =
+          "录制停滞（文件无增长），已自动重启录制 ($_stallRestartCount/$_stallMaxRestarts)";
+      Log.logPrint(
+          "检测到录制停滞，自动重启 ($_stallRestartCount/$_stallMaxRestarts): $_outputPath, ${_seconds}s");
+      _restartSession();
+      return;
+    }
+
+    if (_stallAutoRestart && _stallRestartCount >= _stallMaxRestarts) {
+      // 自动重启已达上限：结束录制并标记异常中断
+      _isInterrupted = true;
+      lastError.value = "录制停滞，自动重启已达上限，已结束录制";
+      Log.logPrint("录制停滞重启达上限，结束录制: $_outputPath");
+      _onFinished();
+      return;
+    }
+
+    // 未开启自动重启：仅提示，不自动处理
+    lastError.value = "录制停滞：文件长时间无增长（自动重启未开启）";
+    Log.logPrint("检测到录制停滞（仅提示）: $_outputPath, ${_seconds}s");
+  }
+
+  /// 停滞时重启录制：停止当前 FFmpeg → 释放引用计数 → 刷新播放地址 → 重新 start
+  /// （与切片分支的重启模式一致，不通知 Manager 移除 session）
+  Future<void> _restartSession() async {
+    _sessionGeneration++; // 使旧 FFmpeg 回调过期
+    _timer?.cancel();
+    _timer = null;
+    if (_sessionId != null) {
+      FFmpegKit.cancel(_sessionId);
+      _sessionId = null;
+    }
+    isRecording.value = false;
+    // 释放引用计数（让 start() 重新获取，保持平衡）
+    _releaseWakelock();
+    _releaseForegroundService();
+    // 删除无价值的 0 字节旧文件
+    try {
+      var f = File(_outputPath);
+      if (f.existsSync() && f.lengthSync() == 0) f.deleteSync();
+    } catch (_) {}
+    // 刷新播放地址（即使刷新失败也继续尝试重启，旧 URL 可能仍有效）
+    try {
+      await _onRefreshPlayUrl?.call();
+    } catch (e) {
+      Log.logPrint("停滞重启刷新播放地址失败(继续尝试): $e");
+    }
+    // 用户在重启过程中停止了录制 → 不重启（start() 会重置 _stopRequested，必须先检查）
+    if (_stopRequested) {
+      Log.logPrint("停滞重启被用户停止打断，结束录制: $taskId");
+      _onFinished();
+      return;
+    }
+    Log.logPrint("停滞重启录制: $_outputPath");
+    try {
+      await start();
+      if (!isRecording.value) {
+        // 重启后未实际启动（如无播放地址）→ 结束本次录制
+        Log.logPrint("停滞重启后未实际启动，结束录制: $taskId");
+        _isInterrupted = true;
+        _onFinished();
+      }
+    } catch (e) {
+      Log.logPrint("停滞重启失败，清理会话: $taskId, $e");
+      _releaseWakelock();
+      _releaseForegroundService();
+      _finishCompleter?.complete();
+      onFinished?.call();
+    }
   }
 }

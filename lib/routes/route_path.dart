@@ -6,6 +6,7 @@ class RoutePath {
   static const String kAudioSettings = "/settings/audio";
   static const String kAudioFormat = "/settings/audio_format";
   static const String kLiveNotification = "/settings/live_notification";
+  static const String kRecordingHealth = "/settings/recording_health";
   static const String kDebugLog = "/debug_log";
   static const String kTsUnpack = "/ts_unpack";
   static const String kRecordings = "/recordings";

@@ -60,11 +60,21 @@ class TsUnpackService {
     var inputFile = File(tsPath);
     var inputSize = inputFile.lengthSync();
 
-    // 文件尺寸进度监测（作为后备）
+    // 进度统一出口：只允许前进，忽略回退值，避免进度条反复跳动
+    var lastProgress = 0.0;
+    void emitProgress(double p) {
+      if (p < lastProgress || p > 1.0) return;
+      lastProgress = p;
+      onProgress?.call(p);
+    }
+
+    // 文件尺寸进度监测：仅当无法从 FFmpeg 日志获取精确时长时作为后备
     Timer? progressTimer;
     if (onProgress != null) {
       progressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-        if (!completer.isCompleted) {
+        // totalDuration > 0 说明已有精确进度源（FFprobe 或日志 Duration 行），
+        // 此时文件尺寸估算不再推值，避免与日志 time= 解析冲突导致进度跳动
+        if (!completer.isCompleted && totalDuration == 0) {
           var outputFile = File(outputPath);
           if (outputFile.existsSync()) {
             var written = outputFile.lengthSync();
@@ -73,7 +83,7 @@ class TsUnpackService {
             var ratio = inputSize > 0
                 ? (written / (inputSize * 0.15)).clamp(0.0, 0.95)
                 : 0.0;
-            onProgress(ratio);
+            emitProgress(ratio);
           }
         }
       });
@@ -86,7 +96,7 @@ class TsUnpackService {
         var returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode)) {
           Log.logPrint("解包成功: $outputPath");
-          onProgress?.call(1.0);
+          emitProgress(1.0);
 
           // 按设置决定是否删除源 TS 文件
           if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
@@ -149,7 +159,7 @@ class TsUnpackService {
               timeMatch.group(2)!,
               timeMatch.group(3)!,
             );
-            onProgress((current / totalDuration).clamp(0.0, 1.0));
+            emitProgress(current / totalDuration);
           }
         }
       },

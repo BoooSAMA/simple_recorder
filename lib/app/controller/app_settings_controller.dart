@@ -45,6 +45,21 @@ class AppSettingsController extends GetxController {
   /// 直播状态检测并发数（5~50）
   final liveCheckConcurrency = 5.obs;
 
+  /// 录制状态检测（文件停滞检测总开关）
+  final recordingStatusCheckEnabled = true.obs;
+
+  /// 文件大小检测间隔（秒，10~300）
+  final recordingStatusCheckInterval = 30.obs;
+
+  /// 停滞判定阈值：录制开始超过 N 秒文件仍无增长视为异常（秒，30~600）
+  final recordingStallThreshold = 60.obs;
+
+  /// 检测到停滞时自动重启录制
+  final recordingStallAutoRestart = true.obs;
+
+  /// 停滞自动重启次数上限（1~10）
+  final recordingStallMaxRestarts = 3.obs;
+
   /// 置顶的直播间 ID 集合
   var pinnedFollowIds = <String>{}.obs;
 
@@ -98,6 +113,16 @@ class AppSettingsController extends GetxController {
         .getValue("auto_rerecord_max_retries", 3);
     liveCheckConcurrency.value = LocalStorageService.instance
         .getValue("live_check_concurrency", 5);
+    recordingStatusCheckEnabled.value = LocalStorageService.instance
+        .getValue("recording_status_check_enabled", true);
+    recordingStatusCheckInterval.value = LocalStorageService.instance
+        .getValue("recording_status_check_interval", 30);
+    recordingStallThreshold.value = LocalStorageService.instance
+        .getValue("recording_stall_threshold", 60);
+    recordingStallAutoRestart.value = LocalStorageService.instance
+        .getValue("recording_stall_auto_restart", true);
+    recordingStallMaxRestarts.value = LocalStorageService.instance
+        .getValue("recording_stall_max_restarts", 3);
   }
 
   /// 加载置顶直播间 ID 列表
@@ -248,5 +273,37 @@ class AppSettingsController extends GetxController {
     final clamped = limit.clamp(5, 50);
     liveCheckConcurrency.value = clamped;
     LocalStorageService.instance.setValue("live_check_concurrency", clamped);
+  }
+
+  void setRecordingStatusCheckEnabled(bool value) {
+    recordingStatusCheckEnabled.value = value;
+    LocalStorageService.instance
+        .setValue("recording_status_check_enabled", value);
+  }
+
+  void setRecordingStatusCheckInterval(int seconds) {
+    final clamped = seconds.clamp(10, 300);
+    recordingStatusCheckInterval.value = clamped;
+    LocalStorageService.instance
+        .setValue("recording_status_check_interval", clamped);
+  }
+
+  void setRecordingStallThreshold(int seconds) {
+    final clamped = seconds.clamp(30, 600);
+    recordingStallThreshold.value = clamped;
+    LocalStorageService.instance.setValue("recording_stall_threshold", clamped);
+  }
+
+  void setRecordingStallAutoRestart(bool value) {
+    recordingStallAutoRestart.value = value;
+    LocalStorageService.instance
+        .setValue("recording_stall_auto_restart", value);
+  }
+
+  void setRecordingStallMaxRestarts(int retries) {
+    final clamped = retries.clamp(1, 10);
+    recordingStallMaxRestarts.value = clamped;
+    LocalStorageService.instance
+        .setValue("recording_stall_max_restarts", clamped);
   }
 }
