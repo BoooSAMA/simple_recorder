@@ -646,8 +646,8 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
 
     if (pinnedIds.isNotEmpty) {
-      // ---- 第一批：Pinned 用户优先检测 ----
-      for (final user in allUsers) {
+      // ---- 第一批：Pinned 用户优先检测（不含已批量处理的 B站用户）----
+      for (final user in restUsers) {
         if (pinnedIds.contains(user.id)) {
           queue.add(user);
         }
@@ -657,7 +657,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       // ---- 第二批：其余用户延迟错峰 ----
       if (completed < total) {
         await Future.delayed(const Duration(seconds: 2));
-        for (final user in allUsers) {
+        for (final user in restUsers) {
           if (!pinnedIds.contains(user.id)) {
             queue.add(user);
           }
@@ -666,7 +666,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       }
     } else {
       // 没有 Pinned 用户，直接全部检测（无延迟）
-      queue.addAll(allUsers);
+      queue.addAll(restUsers);
       await drainQueue();
     }
 
