@@ -1,25 +1,20 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:get/get.dart';
 
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/recording_service.dart';
 
-class LiveNotificationService with WidgetsBindingObserver {
+class LiveNotificationService {
   static final LiveNotificationService _instance = LiveNotificationService._();
   static LiveNotificationService get instance => _instance;
   LiveNotificationService._();
 
   FlutterLocalNotificationsPlugin? _plugin;
   final Set<String> _notifiedLiveIds = {};
-  bool _appInForeground = true;
   int _keepAliveCount = 0;
 
   Future<void> init() async {
-    WidgetsBinding.instance.addObserver(this);
-
     _plugin = FlutterLocalNotificationsPlugin();
 
     const androidSettings =
@@ -50,14 +45,7 @@ class LiveNotificationService with WidgetsBindingObserver {
     Log.logPrint("开播通知服务已初始化");
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    _appInForeground = state == AppLifecycleState.resumed;
-  }
-
-  /// 通知主播开播
-  /// 系统通知：始终发送
-  /// SnackBar：仅在前台时显示
+  /// 通知主播开播（系统通知栏推送）
   Future<void> notifyLiveStart(FollowUser user) async {
     if (_notifiedLiveIds.contains(user.id)) return;
     _notifiedLiveIds.add(user.id);
@@ -84,19 +72,6 @@ class LiveNotificationService with WidgetsBindingObserver {
       );
     } catch (e) {
       Log.logPrint("发送系统通知失败: $e");
-    }
-
-    if (_appInForeground) {
-      Get.snackbar(
-        '开播提醒',
-        '${user.userName} 开播了！',
-        snackPosition: SnackPosition.TOP,
-        duration: const Duration(seconds: 4),
-        backgroundColor: Get.theme.colorScheme.primaryContainer,
-        colorText: Get.theme.colorScheme.onPrimaryContainer,
-        margin: const EdgeInsets.all(12),
-        borderRadius: 8,
-      );
     }
   }
 
@@ -130,7 +105,5 @@ class LiveNotificationService with WidgetsBindingObserver {
   }
 
   /// 释放资源
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-  }
+  void dispose() {}
 }
