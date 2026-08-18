@@ -492,3 +492,49 @@ class MaoerfmSite implements LiveSite {
     return [];
   }
 }
+
+/// B站批量查询直播间状态 —— 把 N 个单房间请求合并为 ⌈N/50⌉ 个请求。
+///
+/// 使用免费批量接口:
+/// GET /xlive/web-room/v1/index/getRoomBaseInfo?req_biz=web_room_componet&room_ids=a&room_ids=b...
+///
+/// 成功返回 `{roomId: isLive}`；任一分片失败（网络错误/接口异常）返回
+/// `null`，调用方应降级为逐个查询（与 `getLiveStatus` 行为一致）。
+Future<Map<String, bool>?> bilibiliGetLiveStatusBatch(
+    List<String> roomIds) async {
+  if (roomIds.isEmpty) return <String, bool>{};
+
+  const batchSize = 50;
+  final result = <String, bool>{};
+
+  for (var i = 0; i < roomIds.length; i += batchSize) {
+    final end = i + batchSize > roomIds.length ? roomIds.length : i + batchSize;
+    final chunk = roomIds.sublist(i, end);
+
+    // 手动拼接 query：批量接口要求重复 room_ids 参数，Dio 的 queryParameters
+    // 是 Map，相同 key 会被覆盖，无法表达 `room_ids=a&room_ids=b`。
+    final query = chunk.map((id) => 'room_ids=$id').join('&');
+    final url =
+        'https://api.live.bilibili.com/xlive/web-room/v1/index/getRoomBaseInfo'
+        '?req_biz=web_room_componet&$query';
+
+    late Map<String, dynamic> json;
+    try {
+      json = await hc.HttpClient.instance.getJson(url) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+    if ((json['code'] ?? 0) != 0) return null;
+
+    final byRoomIds = json['data']?['by_room_ids'];
+    if (byRoomIds is! Map) return null;
+
+    for (final id in chunk) {
+      final room = byRoomIds[id];
+      // live_status: 0=未开播 1=直播中 2=轮播；轮播视为未开播（与 getLiveStatus 一致）
+      result[id] = (room is Map && room['live_status'] == 1);
+    }
+  }
+
+  return result;
+}

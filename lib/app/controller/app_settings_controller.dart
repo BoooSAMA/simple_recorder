@@ -21,6 +21,12 @@ class AppSettingsController extends GetxController {
   final livePollInterval = 5.obs;
   final autoRecordPinned = false.obs;
 
+  /// 非置顶主播开播通知（后台轮询检测到非 pin 主播开播时推送系统通知）
+  final notifyNonPinnedLive = false.obs;
+
+  /// 后台自动刷新非置顶主播直播状态
+  final backgroundRefreshNonPinned = false.obs;
+
   /// 音频输出格式（m4a, mp3, flac, wav, ogg）
   final audioFormat = Constant.kAudioFormatM4A.obs;
 
@@ -72,6 +78,10 @@ class AppSettingsController extends GetxController {
         .getValue("live_poll_interval", 5);
     autoRecordPinned.value = LocalStorageService.instance
         .getValue("auto_record_pinned", false);
+    notifyNonPinnedLive.value = LocalStorageService.instance
+        .getValue("notify_non_pinned_live", false);
+    backgroundRefreshNonPinned.value = LocalStorageService.instance
+        .getValue("background_refresh_non_pinned", false);
     audioFormat.value = LocalStorageService.instance
         .getValue("audio_format", Constant.kAudioFormatM4A);
     deleteTsAfterUnpack.value = LocalStorageService.instance
@@ -180,6 +190,20 @@ class AppSettingsController extends GetxController {
   void setAutoRecordPinned(bool value) {
     autoRecordPinned.value = value;
     LocalStorageService.instance.setValue("auto_record_pinned", value);
+  }
+
+  void setNotifyNonPinnedLive(bool value) {
+    notifyNonPinnedLive.value = value;
+    LocalStorageService.instance
+        .setValue("notify_non_pinned_live", value);
+    EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
+  }
+
+  void setBackgroundRefreshNonPinned(bool value) {
+    backgroundRefreshNonPinned.value = value;
+    LocalStorageService.instance
+        .setValue("background_refresh_non_pinned", value);
+    EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
   }
 
   void setAudioFormat(String format) {

@@ -7,8 +7,10 @@ import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/event_bus.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/app/sites.dart';
+import 'package:simple_recorder/app/sites_fixed.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/db_service.dart';
+import 'package:simple_recorder/services/local_storage_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_recorder/services/recording_service.dart';
 import 'package:simple_recorder/services/live_notification_service.dart';
@@ -51,6 +53,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Timer? _livePoller;
   StreamSubscription<dynamic>? _pinSubscription;
   bool _firstPinCheckDone = false;
+  bool _backgroundCheckRunning = false;
   StreamSubscription<RecordingSession>? _reRecordSub;
   final _reRecordQueue = <_ReRecordTask>[];
 
@@ -144,15 +147,19 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void _syncPoller() {
     final settings = AppSettingsController.instance;
     final hasPinned = settings.pinnedFollowIds.isNotEmpty;
-    final shouldRun = settings.liveNotificationEnabled.value && hasPinned;
+    final wantNonPinned = settings.backgroundRefreshNonPinned.value ||
+        settings.notifyNonPinnedLive.value;
+    // 有置顶主播，或开启了非置顶主播的后台刷新/通知时才运行轮询
+    final shouldRun =
+        settings.liveNotificationEnabled.value && (hasPinned || wantNonPinned);
 
     if (shouldRun && _livePoller == null) {
       _firstPinCheckDone = false;
       _livePoller = Timer.periodic(
         Duration(minutes: settings.livePollInterval.value),
-        (_) => _checkPinnedLiveStatus(notify: true),
+        (_) => _checkBackgroundLiveStatus(notify: true),
       );
-      _checkPinnedLiveStatus(notify: false);
+      _checkBackgroundLiveStatus(notify: false);
       // 保活：防止后台进程被杀死
       LiveNotificationService.instance.acquireKeepAlive();
     } else if (!shouldRun && _livePoller != null) {
@@ -165,14 +172,40 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
   void loadFollowList() {
     followList.value = DBService.instance.getFollowList();
-    // 先全部初始化为"未开播"，让 UI 立即有内容
+    // 先恢复上次检测的缓存状态，让 UI 立即有内容（无缓存的置"未开播"）
+    _restoreLiveStatusCache();
     for (final user in followList) {
-      user.liveStatus.value = 1;
+      if (user.liveStatus.value == 0) {
+        user.liveStatus.value = 1;
+      }
     }
     filterData();
     // 如果在 onReady 之后重新加载（如事件触发），需要立即检查状态
     if (_initialCheckDone) {
       checkAllLiveStatus();
+    }
+  }
+
+  /// 保存直播状态缓存（settings box，供下次启动立即恢复）
+  void _saveLiveStatusCache() {
+    final cache = <String, int>{};
+    for (final user in followList) {
+      final status = user.liveStatus.value;
+      if (status == 0) continue; // 未知（检测失败）不覆盖旧缓存
+      cache[user.id] = status;
+    }
+    LocalStorageService.instance.setValue("last_live_status", cache);
+  }
+
+  /// 从缓存恢复上次检测的直播状态
+  void _restoreLiveStatusCache() {
+    final raw = LocalStorageService.instance.getValue("last_live_status");
+    if (raw is! Map) return;
+    for (final user in followList) {
+      final status = raw[user.id];
+      if (status is int && (status == 1 || status == 2)) {
+        user.liveStatus.value = status;
+      }
     }
   }
 
@@ -321,47 +354,175 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     _reRecordQueue.clear();
   }
 
-  Future<void> _checkPinnedLiveStatus({bool notify = false}) async {
-    final pinnedIds = AppSettingsController.instance.pinnedFollowIds;
-    if (pinnedIds.isEmpty) return;
+  Future<void> _checkBackgroundLiveStatus({bool notify = false}) async {
+    // 防止上次检测未完成时本次 tick 重叠执行
+    if (_backgroundCheckRunning) return;
+    _backgroundCheckRunning = true;
 
+    try {
+      final settings = AppSettingsController.instance;
+      if (!settings.liveNotificationEnabled.value && notify) return;
+
+      final pinnedIds = settings.pinnedFollowIds;
+      final wantNonPinned = settings.backgroundRefreshNonPinned.value ||
+          settings.notifyNonPinnedLive.value;
+
+      final pinnedUsers = <FollowUser>[];
+      final nonPinnedUsers = <FollowUser>[];
+      for (final user in followList) {
+        if (pinnedIds.contains(user.id)) {
+          pinnedUsers.add(user);
+        } else if (wantNonPinned) {
+          nonPinnedUsers.add(user);
+        }
+      }
+      if (pinnedUsers.isEmpty && nonPinnedUsers.isEmpty) return;
+
+      // B站用户统一批量检测（一次请求查多个房间），其余按原逻辑检测
+      final allUsers = [...pinnedUsers, ...nonPinnedUsers];
+      final biliUsers = allUsers
+          .where((u) => u.siteId == Constant.kBiliBili)
+          .toList();
+      final restPinned = allUsers
+          .where((u) =>
+              u.siteId != Constant.kBiliBili && pinnedIds.contains(u.id))
+          .toList();
+      final restNonPinned = allUsers
+          .where((u) =>
+              u.siteId != Constant.kBiliBili && !pinnedIds.contains(u.id))
+          .toList();
+
+      final tasks = <Future<void>>[];
+      if (biliUsers.isNotEmpty) {
+        tasks.add(_checkBiliUsersBackground(biliUsers, notify: notify));
+      }
+
+      for (final user in restPinned) {
+        tasks.add(_checkBackgroundUser(user, notify: notify, isPinned: true));
+      }
+
+      // 非置顶主播数量可能较多，按并发上限分池检测
+      if (restNonPinned.isNotEmpty) {
+        final maxConcurrency =
+            settings.liveCheckConcurrency.value.clamp(1, 50).toInt();
+        final queue = List<FollowUser>.from(restNonPinned);
+        Future<void> worker() async {
+          while (queue.isNotEmpty) {
+            final user = queue.removeAt(0);
+            await _checkBackgroundUser(
+                user, notify: notify, isPinned: false);
+          }
+        }
+
+        final workerCount =
+            maxConcurrency < queue.length ? maxConcurrency : queue.length;
+        for (var i = 0; i < workerCount; i++) {
+          tasks.add(worker());
+        }
+      }
+
+      await Future.wait(tasks);
+    } finally {
+      _backgroundCheckRunning = false;
+      _firstPinCheckDone = true;
+      filterData();
+      _saveLiveStatusCache();
+    }
+  }
+
+  /// B站批量后台检测：一次批量请求；失败时降级为逐个检测
+  Future<void> _checkBiliUsersBackground(
+    List<FollowUser> users, {
+    required bool notify,
+  }) async {
     final settings = AppSettingsController.instance;
-    if (!settings.liveNotificationEnabled.value && notify) return;
-
-    for (final user in followList) {
-      if (!pinnedIds.contains(user.id)) continue;
-
-      try {
-        var site = Sites.getSite(user.siteId);
-        if (site == null) continue;
-
-        final wasLive = user.liveStatus.value == 2;
-        final isLive =
-            await site.liveSite.getLiveStatus(roomId: user.roomId);
-        user.liveStatus.value = isLive ? 2 : 1;
-
-        if (!wasLive && isLive && notify && _firstPinCheckDone) {
-          await LiveNotificationService.instance.notifyLiveStart(user);
-          // 自动录制：置顶主播开播时自动开始录制
-          if (settings.autoRecordPinned.value) {
-            await _autoStartRecording(user);
-          }
+    try {
+      final result = await bilibiliGetLiveStatusBatch(
+        users.map((u) => u.roomId).toList(),
+      );
+      if (result == null) {
+        // 批量不可用 → 降级逐个
+        for (final user in users) {
+          await _checkBackgroundUser(
+            user,
+            notify: notify,
+            isPinned: settings.pinnedFollowIds.contains(user.id),
+          );
         }
-        if (!isLive) {
-          LiveNotificationService.instance.clearNotified(user.id);
-          // 直播已结束：若正在录制则自动停止
-          if (RecordingManager.instance.isRecording(user.id)) {
-            Log.logPrint("检测到置顶主播直播已结束，自动停止录制: ${user.userName}");
-            await RecordingManager.instance.stopRecording(user.id);
-          }
-        }
-      } catch (e) {
-        Log.logPrint("检测 pin 主播状态失败: ${user.userName} - $e");
-        user.liveStatus.value = 0;
+        return;
+      }
+      for (final user in users) {
+        await _applyBackgroundStatus(
+          user,
+          result[user.roomId] ?? false,
+          notify: notify,
+          isPinned: settings.pinnedFollowIds.contains(user.id),
+        );
+      }
+    } catch (e) {
+      Log.logPrint("B站批量检测失败，降级逐个检测: $e");
+      for (final user in users) {
+        await _checkBackgroundUser(
+          user,
+          notify: notify,
+          isPinned: settings.pinnedFollowIds.contains(user.id),
+        );
       }
     }
-    _firstPinCheckDone = true;
-    filterData();
+  }
+
+  /// 后台轮询单个主播：刷新状态；开播时按策略通知/自动录制
+  Future<void> _checkBackgroundUser(
+    FollowUser user, {
+    required bool notify,
+    required bool isPinned,
+  }) async {
+    try {
+      var site = Sites.getSite(user.siteId);
+      if (site == null) return;
+
+      final isLive = await site.liveSite.getLiveStatus(roomId: user.roomId);
+      await _applyBackgroundStatus(
+          user, isLive, notify: notify, isPinned: isPinned);
+    } catch (e) {
+      Log.logPrint("检测直播状态失败: ${user.userName} - $e");
+      user.liveStatus.value = 0;
+    }
+  }
+
+  /// 应用后台检测结果：更新状态 + 开播通知/自动录制 + 下播自动停录
+  Future<void> _applyBackgroundStatus(
+    FollowUser user,
+    bool isLive, {
+    required bool notify,
+    required bool isPinned,
+  }) async {
+    final settings = AppSettingsController.instance;
+
+    final wasLive = user.liveStatus.value == 2;
+    user.liveStatus.value = isLive ? 2 : 1;
+
+    // 首次检测（app 启动/设置变更后）不通知，避免误报
+    if (!wasLive && isLive && notify && _firstPinCheckDone) {
+      if (isPinned) {
+        await LiveNotificationService.instance.notifyLiveStart(user);
+        // 自动录制：置顶主播开播时自动开始录制
+        if (settings.autoRecordPinned.value) {
+          await _autoStartRecording(user);
+        }
+      } else if (settings.notifyNonPinnedLive.value) {
+        // 非置顶主播：仅当"非置顶开播通知"开启时通知
+        await LiveNotificationService.instance.notifyLiveStart(user);
+      }
+    }
+    if (!isLive) {
+      LiveNotificationService.instance.clearNotified(user.id);
+      // 直播已结束：若正在录制则自动停止
+      if (RecordingManager.instance.isRecording(user.id)) {
+        Log.logPrint("检测到直播已结束，自动停止录制: ${user.userName}");
+        await RecordingManager.instance.stopRecording(user.id);
+      }
+    }
   }
 
   void setFilterMode(int mode) {
@@ -390,6 +551,50 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     for (final user in allUsers) {
       if (user.liveStatus.value == 0) {
         user.liveStatus.value = 1;
+      }
+    }
+
+    // ---- B站批量检测：一次请求查最多 50 个房间，N 个请求合并为 1-2 个 ----
+    final biliUsers = allUsers
+        .where((u) => u.siteId == Constant.kBiliBili)
+        .toList();
+    final restUsers = allUsers
+        .where((u) => u.siteId != Constant.kBiliBili)
+        .toList();
+
+    // 批量结果回填：与 runWorker 中的处理完全一致（状态/停录/计数/进度/同步）
+    Future<void> applyBatchResult(FollowUser user, bool isLive) async {
+      user.liveStatus.value = isLive ? 2 : 1;
+      if (isLive) {
+        liveIds.add(user.id);
+      } else {
+        // 非直播状态：若正在录制则自动停止
+        if (RecordingManager.instance.isRecording(user.id)) {
+          Log.logPrint("检测到直播已结束，自动停止录制: ${user.userName}");
+          await RecordingManager.instance.stopRecording(user.id);
+        }
+      }
+      completed++;
+      loadProgress.value = completed / total;
+      _syncLists(allUsers, liveIds);
+    }
+
+    if (biliUsers.isNotEmpty) {
+      try {
+        final result = await bilibiliGetLiveStatusBatch(
+          biliUsers.map((u) => u.roomId).toList(),
+        );
+        if (result != null) {
+          for (final user in biliUsers) {
+            await applyBatchResult(user, result[user.roomId] ?? false);
+          }
+        } else {
+          // 批量接口不可用 → 降级为逐个检测
+          restUsers.addAll(biliUsers);
+        }
+      } catch (e) {
+        Log.logPrint("B站批量检测失败，降级逐个检测: $e");
+        restUsers.addAll(biliUsers);
       }
     }
 
@@ -466,6 +671,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
 
     filterData();
+    _saveLiveStatusCache();
     isLoading.value = false;
   }
 
@@ -496,7 +702,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _syncPoller();
-      _checkPinnedLiveStatus(notify: true);
+      _checkBackgroundLiveStatus(notify: true);
     }
   }
 

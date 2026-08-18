@@ -41,6 +41,22 @@ class LiveNotificationSettingPage extends StatelessWidget {
                       onChanged: (v) =>
                           controller.setAutoRecordPinned(v),
                     )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("非 Pin 主播开播通知"),
+                      subtitle: const Text("轮询检测到非置顶主播开播时也推送系统通知"),
+                      value: controller.notifyNonPinnedLive.value,
+                      onChanged: (v) =>
+                          controller.setNotifyNonPinnedLive(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("后台自动刷新非 Pin 主播状态"),
+                      subtitle: const Text("后台轮询时同步刷新非置顶主播的直播状态"),
+                      value: controller.backgroundRefreshNonPinned.value,
+                      onChanged: (v) =>
+                          controller.setBackgroundRefreshNonPinned(v),
+                    )),
               ],
             ),
           ),
@@ -48,8 +64,10 @@ class LiveNotificationSettingPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              "后台轮询间隔：每 N 分钟检测一次 pin 主播的直播状态，"
-              "检测到开播时发送通知。间隔越短通知越及时，但耗电也越多。",
+              "后台轮询间隔：每 N 分钟检测一次置顶主播的直播状态，"
+              "检测到开播时发送通知。开启\"非 Pin 开播通知\"或"
+              "\"后台自动刷新\"后，非置顶主播也会被轮询检测。"
+              "间隔越短通知越及时，但耗电也越多。",
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withAlpha(100),
                 fontSize: 12,
