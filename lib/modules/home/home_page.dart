@@ -546,7 +546,7 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
                               children: [
                                 Icon(Icons.timer_outlined, size: 18),
                                 SizedBox(width: 8),
-                                Text("获取开播时长"),
+                                Text("获取开播信息"),
                               ],
                             ),
                           ),

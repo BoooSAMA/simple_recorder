@@ -739,7 +739,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
             int seconds = diff % 60;
             Get.snackbar(
               "直播信息 · ${user.userName}",
-              "开播时间: $timeStr\n已播时长: $hours小时$minutes分$seconds秒",
+              "直播间标题: ${detail.title}\n开播时间: $timeStr\n已播时长: $hours小时$minutes分$seconds秒",
               snackPosition: SnackPosition.BOTTOM,
               duration: const Duration(seconds: 5),
             );
@@ -750,7 +750,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
       Get.snackbar(
         "直播信息 · ${user.userName}",
-        "该平台暂不支持查询开播时长",
+        "直播间标题: ${detail.title}\n该平台暂不支持查询开播信息",
         snackPosition: SnackPosition.BOTTOM,
       );
     } catch (e) {
