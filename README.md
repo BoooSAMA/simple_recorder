@@ -216,6 +216,7 @@ flutter run
 
 ## 初期主要功能清单
 
+
 - [x] 仅做录播（音频）使用，移除观看直播间功能
 - [x] 并行录播，使用 FFmpeg 同时录制多个直播间
 - [x] 最多 20 路并行录制
@@ -258,6 +259,7 @@ flutter run
 - [x] Android 管理所有文件权限申请
 - [x] App 图标更新（flutter_launcher_icons）
 - [x] 快速启动、非阻塞权限请求
+
 
 ## 项目结构
 
