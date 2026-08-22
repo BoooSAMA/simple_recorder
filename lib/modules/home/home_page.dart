@@ -585,8 +585,7 @@ class _RoomCardState extends State<_RoomCard> with SingleTickerProviderStateMixi
                 user: user,
                 controller: controller,
               ),
-              // 录制中的调试日志（响应式）
-              _ReactiveDebugLog(user: user),
+              // 录制中的错误提示已并入上方时长行（点击查看详情）
             ],
           ),
         ),
@@ -617,6 +616,7 @@ class _CompactRecordingControls extends StatelessWidget {
       var isRecording = session?.isRecording.value ?? false;
       var duration = session?.duration.value ?? "00:00";
       var fileSize = session?.fileSize.value ?? "";
+      var lastError = session?.lastError.value ?? "";
       var theme = Theme.of(context);
 
       if (isRecording) {
@@ -646,27 +646,52 @@ class _CompactRecordingControls extends StatelessWidget {
                     color: Colors.white.withAlpha(25),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.fiber_manual_record, size: 10, color: Colors.red),
-                      const SizedBox(width: 4),
-                      Text(
-                        duration,
-                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.red),
-                      ),
-                      Text(
-                        " · ",
-                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.white38),
-                      ),
-                      Flexible(
-                        child: Text(
-                          fileSize,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.labelSmall?.copyWith(color: Colors.white),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    // 出错时点击查看完整调试日志
+                    onTap:
+                        lastError.isEmpty ? null : () => _showDebugLog(context),
+                    child: Row(
+                      children: [
+                        Icon(Icons.fiber_manual_record,
+                            size: 10, color: Colors.red),
+                        const SizedBox(width: 4),
+                        Text(
+                          duration,
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: Colors.red),
                         ),
-                      ),
-                    ],
+                        Text(
+                          " · ",
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: Colors.white38),
+                        ),
+                        // 出错时用错误提示替换文件大小（复用本行空间，避免溢出）
+                        if (lastError.isNotEmpty) ...[
+                          const Icon(Icons.error_outline,
+                              size: 12, color: Colors.red),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              lastError,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall
+                                  ?.copyWith(color: Colors.red),
+                            ),
+                          ),
+                        ] else
+                          Flexible(
+                            child: Text(
+                              fileSize,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall
+                                  ?.copyWith(color: Colors.white),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -791,57 +816,6 @@ class _CompactRecordingControls extends StatelessWidget {
 }
 
 /// 录制中调试日志面板（响应式）
-class _ReactiveDebugLog extends StatelessWidget {
-  final FollowUser user;
-
-  const _ReactiveDebugLog({required this.user});
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      // 订阅 activeSessions
-      // ignore: unused_local_variable
-      final _ = RecordingManager.instance.activeSessions.length;
-      var session = RecordingManager.instance.getSession(user.id);
-      var isRecording = session?.isRecording.value ?? false;
-      if (!isRecording) return const SizedBox.shrink();
-      var lastError = session?.lastError.value ?? "";
-      if (lastError.isEmpty) return const SizedBox.shrink();
-
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: InkWell(
-          onTap: () => _showDebugLog(context),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline, size: 14, color: Colors.red),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    lastError,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.red,
-                        ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    });
-  }
-}
-
 void _showDebugLog(BuildContext context) {
   Get.dialog(
     AlertDialog(
