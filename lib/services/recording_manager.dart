@@ -111,12 +111,17 @@ class RecordingManager extends GetxService {
     activeCount.value = activeSessions.length;
   }
 
-  /// 清理所有 isRecording=false 的残留 session（刷新/启动时调用）
-  void cleanupStaleSessions() {
+  /// 清理所有 isRecording=false 的残留 session（刷新/启动时调用），
+  /// 并释放其占用的引用计数/挂起等待，返回清理数量。
+  /// 用于主动缓解"取消/停止后名额未释放导致无法重新录制"的问题。
+  int cleanupStaleSessions() {
     var removed = 0;
     for (var session in activeSessions.toList()) {
       if (!session.isRecording.value) {
         activeSessions.remove(session);
+        // 释放可能未归还的唤醒锁/前台服务引用计数，
+        // 完成挂起的停止等待，避免名额与资源泄漏
+        session.releaseStaleResources();
         removed++;
       }
     }
@@ -124,6 +129,7 @@ class RecordingManager extends GetxService {
       activeCount.value = activeSessions.length;
       Log.logPrint("清理了 $removed 个停滞录制会话");
     }
+    return removed;
   }
 
   void stopAll() {

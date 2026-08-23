@@ -181,6 +181,7 @@ class RecordingSession {
   Future<void> start() async {
     if (isRecording.value) return;
     _finished = false;
+    _refCountReleased = false; // start() 会重新获取唤醒锁/前台服务
     _sessionGeneration++; // 标记旧 FFmpeg 回调为过期
 
     // 获取唤醒锁和前台服务
@@ -190,8 +191,7 @@ class RecordingSession {
     var playUrl = _getPlayUrl?.call() ?? "";
     if (playUrl.isEmpty) {
       lastError.value = "没有可用的播放地址";
-      _releaseWakelock();
-      _releaseForegroundService();
+      _releaseResources();
       return;
     }
 
@@ -390,7 +390,12 @@ class RecordingSession {
     _discardRequested = false;
     _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
-    await _finishCompleter!.future;
+    // 超时兜底：FFmpeg cancel 回调可能因任务排队/竞态长时间不触发，
+    // 超时后强制清理，确保 session 从 activeSessions 移除、名额释放
+    await _finishCompleter!.future.timeout(
+      _stopCleanupTimeout,
+      onTimeout: _forceCleanup,
+    );
   }
 
   Future<void> cancel() async {
@@ -400,7 +405,11 @@ class RecordingSession {
     _lastCheckedBytes = -1;
     _finishCompleter = Completer<void>();
     _doCancelFFmpeg();
-    await _finishCompleter!.future;
+    // 超时兜底：同上，防止排队任务 cancel 回调不触发导致名额泄漏
+    await _finishCompleter!.future.timeout(
+      _stopCleanupTimeout,
+      onTimeout: _forceCleanup,
+    );
   }
 
   void forceStop() {
@@ -413,9 +422,8 @@ class RecordingSession {
     isRecording.value = false;
     _stallRestartCount = 0;
     _lastCheckedBytes = -1;
-    _releaseWakelock();
-    _releaseForegroundService();
-    _finishCompleter?.complete();
+    _releaseResources();
+    _completeFinishCompleter();
   }
 
   void _doCancelFFmpeg() {
@@ -432,6 +440,53 @@ class RecordingSession {
     if (!hadActiveSession) {
       _onFinished();
     }
+  }
+
+  /// 幂等释放唤醒锁与前台服务引用计数。
+  /// FFmpeg 回调、超时兜底、forceStop 等多条路径都可能触发释放，
+  /// 防止重复释放导致计数错误。
+  void _releaseResources() {
+    if (_refCountReleased) return;
+    _refCountReleased = true;
+    _releaseWakelock();
+    _releaseForegroundService();
+  }
+
+  /// 幂等完成停止/取消等待的 Completer
+  void _completeFinishCompleter() {
+    final completer = _finishCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
+  }
+
+  /// 停止/取消超时兜底：FFmpeg cancel 回调可能因任务排队/竞态延迟或丢失，
+  /// 超时后强制完成清理，确保 session 从 activeSessions 移除、引用计数释放，
+  /// 避免录制名额泄漏导致后续无法重新录制。
+  /// 若 FFmpeg 回调之后才到达，_onFinished 的 _finished 防重入与幂等释放
+  /// 会保证路径安全（文件仍会被正常 rename/解包）。
+  void _forceCleanup() {
+    Log.logPrint("停止/取消超时，强制清理录制会话: $taskId");
+    _timer?.cancel();
+    _timer = null;
+    _sessionId = null;
+    _releaseResources();
+    _completeFinishCompleter();
+    onFinished?.call();
+  }
+
+  /// 供 RecordingManager 主动清理残留 session 时调用（刷新/启动时）：
+  /// - 兜底取消可能仍在原生层运行的 FFmpeg 任务
+  /// - 幂等释放未归还的唤醒锁/前台服务引用计数
+  /// - 完成挂起的停止/取消等待
+  /// 仅在 session 已非录制状态（isRecording == false）时由外部调用。
+  void releaseStaleResources() {
+    if (_sessionId != null) {
+      FFmpegKit.cancel(_sessionId);
+      _sessionId = null;
+    }
+    _releaseResources();
+    _completeFinishCompleter();
   }
 
   bool _finished = false;
@@ -455,6 +510,17 @@ class RecordingSession {
   /// 旧 FFmpeg 回调检查此值，如果不再匹配则静默放弃处理，
   /// 防止切片重启后旧回调误操作新 session 的文件/状态。
   int _sessionGeneration = 0;
+
+  /// 唤醒锁/前台服务引用计数是否已释放（幂等保护）。
+  /// FFmpeg 回调、超时兜底、forceStop 等多条路径都可能触发释放，
+  /// 防止重复释放导致计数错误。
+  bool _refCountReleased = false;
+
+  /// 停止/取消时等待 FFmpeg cancel 回调的最大时长。
+  /// FFmpegKit 插件的 FFmpeg 任务与录制共享固定 10 线程池，
+  /// 线程池满时任务排队，cancel 回调可能长时间不触发，
+  /// 超时后强制清理，避免 session 残留占住录制名额。
+  static const Duration _stopCleanupTimeout = Duration(seconds: 15);
 
   /// 是否为用户主动停止（而非直播结束/重试耗尽导致的自然结束）
   bool get isUserStopped => _stopRequested;
@@ -483,8 +549,7 @@ class RecordingSession {
       _timer = null;
       isRecording.value = false;
       // 释放引用计数（让 start() 重新获取，保持平衡）
-      _releaseWakelock();
-      _releaseForegroundService();
+      _releaseResources();
       // 刷新播放地址（即使刷新失败也继续尝试重启，旧 URL 可能仍有效）
       try {
         await _onRefreshPlayUrl?.call();
@@ -497,9 +562,8 @@ class RecordingSession {
       } catch (e) {
         Log.logPrint("切片重启录制失败，清理会话: $e");
         // 重启失败时完整清理，防止 session 挂起
-        _releaseWakelock();
-        _releaseForegroundService();
-        _finishCompleter?.complete();
+        _releaseResources();
+        _completeFinishCompleter();
         onFinished?.call();
       }
       return;
@@ -512,9 +576,8 @@ class RecordingSession {
     isRecording.value = false;
     _sessionId = null;
     // 录制结束时释放唤醒锁和前台服务
-    _releaseWakelock();
-    _releaseForegroundService();
-    _finishCompleter?.complete();
+    _releaseResources();
+    _completeFinishCompleter();
     // 通知 RecordingManager 从 activeSessions 中移除
     onFinished?.call();
   }
@@ -559,7 +622,17 @@ class RecordingSession {
       }
       completer.complete();
     });
-    await completer.future;
+    // 解包任务与录制共享 FFmpegKit 插件的固定线程池，
+    // 线程池满时任务会排队，长时间等待会阻塞 session 清理
+    // （_onFinished → onFinished 移除 activeSessions）。
+    // 超时后不再等待，优先保证录制名额释放；
+    // 解包任务本身最终仍会执行，文件不受影响。
+    await completer.future.timeout(
+      const Duration(minutes: 5),
+      onTimeout: () {
+        Log.logPrint("自动解包等待超时（可能排队中），不阻塞录制清理: $tsPath");
+      },
+    );
   }
 
   Future<void> _renameFileWithEndTime() async {
@@ -664,8 +737,7 @@ class RecordingSession {
     }
     isRecording.value = false;
     // 释放引用计数（让 start() 重新获取，保持平衡）
-    _releaseWakelock();
-    _releaseForegroundService();
+    _releaseResources();
     // 删除无价值的 0 字节旧文件
     try {
       var f = File(_outputPath);
@@ -694,9 +766,8 @@ class RecordingSession {
       }
     } catch (e) {
       Log.logPrint("停滞重启失败，清理会话: $taskId, $e");
-      _releaseWakelock();
-      _releaseForegroundService();
-      _finishCompleter?.complete();
+      _releaseResources();
+      _completeFinishCompleter();
       onFinished?.call();
     }
   }

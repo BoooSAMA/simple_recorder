@@ -69,7 +69,7 @@ class HomePage extends StatelessWidget {
           }
           return IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => controller.checkAllLiveStatus(),
+            onPressed: () => controller.checkAllLiveStatus(notifyCleanup: true),
             tooltip: "刷新状态",
           );
         }),
@@ -283,7 +283,7 @@ class HomePage extends StatelessWidget {
     );
 
     return RefreshIndicator(
-      onRefresh: () => controller.checkAllLiveStatus(),
+      onRefresh: () => controller.checkAllLiveStatus(notifyCleanup: true),
       child: CustomScrollView(
         slivers: [
           const SliverPadding(padding: EdgeInsets.only(bottom: 4)),
@@ -389,7 +389,7 @@ class HomePage extends StatelessWidget {
 
   Widget _buildSimpleList(BuildContext context, HomeController controller) {
     return RefreshIndicator(
-      onRefresh: () => controller.checkAllLiveStatus(),
+      onRefresh: () => controller.checkAllLiveStatus(notifyCleanup: true),
       child: GridView.builder(
         padding: const EdgeInsets.all(8),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(

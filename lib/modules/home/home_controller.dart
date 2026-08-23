@@ -531,11 +531,25 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   }
 
   /// 分批检测所有直播间直播状态：Pinned 用户优先，其余延迟错峰
-  Future<void> checkAllLiveStatus() async {
-    if (followList.isEmpty) return;
+  /// [notifyCleanup] 为 true 时（用户主动刷新），若清理了残留录制会话
+  /// 会弹提示，让用户感知录制名额已释放
+  Future<void> checkAllLiveStatus({bool notifyCleanup = false}) async {
+    // 每次刷新先清理停滞 session，保证录制计数实时准确。
+    // 放在列表空判断之前：即使没有收藏，也要能释放残留的录制名额
+    final cleanedCount = RecordingManager.instance.cleanupStaleSessions();
+    if (cleanedCount > 0) {
+      Log.logPrint("刷新时主动清理 $cleanedCount 个停滞录制会话");
+      if (notifyCleanup) {
+        Get.snackbar(
+          "刷新完成",
+          "已清理 $cleanedCount 个停滞录制会话，录制名额已释放",
+          snackPosition: SnackPosition.BOTTOM,
+          duration: const Duration(seconds: 2),
+        );
+      }
+    }
 
-    // 每次刷新先清理停滞 session，保证录制计数实时准确
-    RecordingManager.instance.cleanupStaleSessions();
+    if (followList.isEmpty) return;
 
     isLoading.value = true;
     loadProgress.value = 0.0;
