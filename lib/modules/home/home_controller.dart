@@ -757,9 +757,16 @@ class HomeController extends GetxController with WidgetsBindingObserver {
               snackPosition: SnackPosition.BOTTOM,
               duration: const Duration(seconds: 4),
               // X 键手动关闭，避免等待自动消失
-              mainButton: IconButton(
+              // 用 TextButton 而非 IconButton：兼容不同 get 版本
+              // （部分版本 mainButton 参数类型为 TextButton?）
+              mainButton: TextButton(
                 onPressed: () => Get.closeCurrentSnackbar(),
-                icon: const Icon(Icons.close, size: 18),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(32, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Icon(Icons.close, size: 18),
               ),
             );
             return;
@@ -772,9 +779,14 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         "直播间标题: ${detail.title}\n该平台暂不支持查询开播信息",
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 4),
-        mainButton: IconButton(
+        mainButton: TextButton(
           onPressed: () => Get.closeCurrentSnackbar(),
-          icon: const Icon(Icons.close, size: 18),
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: const Size(32, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Icon(Icons.close, size: 18),
         ),
       );
     } catch (e) {
