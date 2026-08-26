@@ -755,7 +755,12 @@ class HomeController extends GetxController with WidgetsBindingObserver {
               "直播信息 · ${user.userName}",
               "直播间标题: ${detail.title}\n开播时间: $timeStr\n已播时长: $hours小时$minutes分$seconds秒",
               snackPosition: SnackPosition.BOTTOM,
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 4),
+              // X 键手动关闭，避免等待自动消失
+              mainButton: IconButton(
+                onPressed: () => Get.closeCurrentSnackbar(),
+                icon: const Icon(Icons.close, size: 18),
+              ),
             );
             return;
           }
@@ -766,6 +771,11 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         "直播信息 · ${user.userName}",
         "直播间标题: ${detail.title}\n该平台暂不支持查询开播信息",
         snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
+        mainButton: IconButton(
+          onPressed: () => Get.closeCurrentSnackbar(),
+          icon: const Icon(Icons.close, size: 18),
+        ),
       );
     } catch (e) {
       Get.snackbar("获取失败", e.toString(),
