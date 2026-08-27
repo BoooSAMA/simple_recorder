@@ -139,12 +139,137 @@ class RecordingsPage extends StatelessWidget {
 
         return Column(
           children: [
+            _buildToolbar(context, controller),
             Expanded(child: _buildFileList(context, controller)),
             _buildSummaryBar(context, controller),
           ],
         );
       }),
     );
+  }
+
+  /// 顶部工具条：文件排序筛选 + 一键折叠/展开所有主播文件夹
+  Widget _buildToolbar(BuildContext context, RecordingsController controller) {
+    var theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          // 排序筛选
+          InkWell(
+            onTapDown: (details) =>
+                _showSortMenu(context, controller, details.globalPosition),
+            borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.sort, size: 18),
+                  const SizedBox(width: 4),
+                  Obx(() => Text(
+                        _sortModeLabel(controller.sortMode.value),
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withAlpha(150)),
+                      )),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          // 一键收起/展开所有主播文件夹
+          Obx(() {
+            // 订阅所有分组的展开状态，驱动按钮图标切换
+            var anyExpanded = false;
+            for (var g in controller.groups) {
+              if (g.isExpanded.value) {
+                anyExpanded = true;
+                break;
+              }
+            }
+            return InkWell(
+              onTap: () => controller.toggleCollapseAll(),
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      anyExpanded ? Icons.unfold_less : Icons.unfold_more,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      anyExpanded ? "全部收起" : "全部展开",
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface
+                              .withAlpha(150)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  /// 弹出排序方式选择菜单
+  Future<void> _showSortMenu(
+      BuildContext context, RecordingsController controller, Offset position) async {
+    var theme = Theme.of(context);
+    const labels = ['日期降序（最新在前）', '日期升序（最旧在前）', '主播名'];
+    final value = await showMenu<int>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx, position.dy),
+      items: [
+        for (var m = 0; m < labels.length; m++)
+          PopupMenuItem(
+            value: m,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  controller.sortMode.value == m
+                      ? Icons.check
+                      : Icons.radio_button_unchecked,
+                  size: 16,
+                  color: controller.sortMode.value == m
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withAlpha(100),
+                ),
+                const SizedBox(width: 8),
+                Text(labels[m], style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (value != null) controller.setSortMode(value);
+  }
+
+  String _sortModeLabel(int mode) {
+    switch (mode) {
+      case 1:
+        return "日期升序";
+      case 2:
+        return "主播名";
+      default:
+        return "日期降序";
+    }
   }
 
   Widget _buildFileList(BuildContext context, RecordingsController controller) {

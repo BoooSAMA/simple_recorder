@@ -67,6 +67,9 @@ class RecordingsController extends GetxController {
   final isLoading = false.obs;
   final isSelectMode = false.obs;
 
+  /// 文件排序模式: 0=日期降序(最新在前) 1=日期升序(最旧在前) 2=主播名
+  final sortMode = 0.obs;
+
   int get totalFiles => groups.fold(0, (sum, g) => sum + g.count);
   int get totalFolders => groups.length;
 
@@ -201,6 +204,9 @@ class RecordingsController extends GetxController {
       ));
     }
 
+    // 按当前排序模式重排（用户可能已切换过排序方式）
+    reSort();
+
     isLoading.value = false;
 
     // 异步探测各文件时长
@@ -245,6 +251,51 @@ class RecordingsController extends GetxController {
       for (var item in group.items) {
         item.isSelected.value = !allSelected;
       }
+    }
+  }
+
+  /// 切换排序模式并按新模式重排文件列表
+  void setSortMode(int mode) {
+    if (mode == sortMode.value) return;
+    sortMode.value = mode;
+    reSort();
+  }
+
+  /// 按当前排序模式重排所有分组内的文件列表
+  void reSort() {
+    for (var group in groups) {
+      switch (sortMode.value) {
+        case 1: // 日期升序（最旧在前）
+          group.items.sort(
+              (a, b) => _mtime(a.path).compareTo(_mtime(b.path)));
+          break;
+        case 2: // 主播名
+          group.items.sort((a, b) => a.fileName.compareTo(b.fileName));
+          break;
+        default: // 日期降序（最新在前）
+          group.items.sort(
+              (a, b) => _mtime(b.path).compareTo(_mtime(a.path)));
+      }
+    }
+    groups.refresh();
+  }
+
+  DateTime _mtime(String path) {
+    try {
+      return File(path).lastModifiedSync();
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+  }
+
+  /// 是否有展开的分组（用于折叠按钮图标切换）
+  bool get anyExpanded => groups.any((g) => g.isExpanded.value);
+
+  /// 一键收起/展开所有分组：有展开的组则全部收起，否则全部展开
+  void toggleCollapseAll() {
+    var expand = !anyExpanded;
+    for (var group in groups) {
+      group.isExpanded.value = expand;
     }
   }
 }
