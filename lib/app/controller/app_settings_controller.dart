@@ -14,7 +14,9 @@ class AppSettingsController extends GetxController {
   final styleColor = 0xFF1677FF.obs;
   final audioSavePath = "".obs;
   final logEnable = false.obs;
-  final maxConcurrentRecordings = 3.obs;
+  /// 最大并行录制数（1~16，硬上限对齐 FFmpegKit 插件补丁后的线程池容量，
+  /// 超过 10 路会显著增加 CPU/内存压力）
+  final maxConcurrentRecordings = 10.obs;
   final autoReconnect = true.obs;
   final autoSaveToFolder = true.obs;
   final liveNotificationEnabled = true.obs;
@@ -82,7 +84,7 @@ class AppSettingsController extends GetxController {
     logEnable.value = LocalStorageService.instance
         .getValue("log_enable", false);
     maxConcurrentRecordings.value = LocalStorageService.instance
-        .getValue("max_concurrent_recordings", 3);
+        .getValue("max_concurrent_recordings", 10);
     autoReconnect.value = LocalStorageService.instance
         .getValue("auto_reconnect", true);
     autoSaveToFolder.value = LocalStorageService.instance
@@ -179,9 +181,13 @@ class AppSettingsController extends GetxController {
     LocalStorageService.instance.setValue("log_enable", enable);
   }
 
+  /// 上限 16 与 FFmpegKit 插件本地补丁后的线程池容量对齐
+  /// （third_party/README.md），超过会假启动
   void setMaxConcurrentRecordings(int max) {
-    maxConcurrentRecordings.value = max;
-    LocalStorageService.instance.setValue("max_concurrent_recordings", max);
+    final clamped = max.clamp(1, 16);
+    maxConcurrentRecordings.value = clamped;
+    LocalStorageService.instance
+        .setValue("max_concurrent_recordings", clamped);
   }
 
   void setIsDynamic(bool value) {

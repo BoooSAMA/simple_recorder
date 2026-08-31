@@ -55,6 +55,21 @@ class SettingsPage extends StatelessWidget {
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SettingsNumber(
+                      title: "最大并行录制数",
+                      value: controller.maxConcurrentRecordings.value,
+                      min: 1,
+                      max: 16,
+                      unit: " 路",
+                      displayValue:
+                          "${controller.maxConcurrentRecordings.value} 路",
+                      subtitle:
+                          "同时录制的直播数量 (1~16)。超过 10 路会显著增加 CPU/内存占用与发热，低端设备可能卡顿或被系统终止",
+                      showTextInput: true,
+                      onChanged: (v) =>
+                          controller.setMaxConcurrentRecordings(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SettingsNumber(
                       title: "直播状态检测并发数",
                       value: controller.liveCheckConcurrency.value,
                       min: 5,

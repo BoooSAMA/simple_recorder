@@ -9,6 +9,7 @@ import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/modules/ts_unpack/ts_unpack_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
+import 'package:simple_recorder/services/unpack_queue.dart';
 
 class FileItem {
   final String path;
@@ -294,14 +295,18 @@ class TsUnpackController extends GetxController {
       currentFileName.value = file.fileName;
 
       var targetFormat = AppSettingsController.instance.audioFormat.value;
-      var result = await TsUnpackService.unpack(
-        file.path,
-        targetFormat: targetFormat,
-        onProgress: (p) {
-          // 单个文件进度占总进度的加权
-          var base = i / selectedFiles.length;
-          progress.value = base + p / selectedFiles.length;
-        },
+      // 走全局串行解包队列：与录制中的自动解包共用一条队，
+      // 避免与录制争抢 FFmpegKit 插件线程池
+      var result = await UnpackQueue.instance.enqueue(
+        () => TsUnpackService.unpack(
+          file.path,
+          targetFormat: targetFormat,
+          onProgress: (p) {
+            // 单个文件进度占总进度的加权
+            var base = i / selectedFiles.length;
+            progress.value = base + p / selectedFiles.length;
+          },
+        ),
       );
 
       if (result.success) {

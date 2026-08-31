@@ -11,6 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
+import 'package:simple_recorder/services/unpack_queue.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -517,8 +518,9 @@ class RecordingSession {
   bool _refCountReleased = false;
 
   /// 停止/取消时等待 FFmpeg cancel 回调的最大时长。
-  /// FFmpegKit 插件的 FFmpeg 任务与录制共享固定 10 线程池，
-  /// 线程池满时任务排队，cancel 回调可能长时间不触发，
+  /// FFmpegKit 插件的 FFmpeg 任务与录制共享固定线程池（本地补丁后 16 线程，
+  /// 见 third_party/README.md），线程池满时任务排队，
+  /// cancel 回调可能长时间不触发，
   /// 超时后强制清理，避免 session 残留占住录制名额。
   static const Duration _stopCleanupTimeout = Duration(seconds: 15);
 
@@ -583,6 +585,11 @@ class RecordingSession {
   }
 
   /// 将完成录制的 TS 文件自动解包为目标格式（根据设置）
+  ///
+  /// 解包任务提交到 [UnpackQueue] 串行执行：入队后立即返回，
+  /// 不阻塞 _onFinished 的 session 清理（录制名额优先释放）。
+  /// 与手动解包共用同一条串行队列，保证同一时刻最多一个解包
+  /// 占用 FFmpegKit 插件线程池，其余容量全部留给录制。
   Future<void> _autoUnpackToTargetFormat() async {
     var tsPath = _outputPath;
     if (tsPath.isEmpty || !tsPath.endsWith('.ts')) return;
@@ -596,43 +603,38 @@ class RecordingSession {
 
     var codecArgs = Constant.audioFormatFfmpegArgs(format);
     var args = ['-y', '-i', tsPath, ...codecArgs, outputPath];
-    Log.logPrint("自动解包 TS → ${Constant.audioFormatDisplayName(format)}: ${args.join(' ')}");
+    Log.logPrint("自动解包入队 TS → ${Constant.audioFormatDisplayName(format)}: ${args.join(' ')}");
 
-    var completer = Completer<void>();
-    await FFmpegKit.executeWithArgumentsAsync(args, (session) async {
-      var returnCode = await session.getReturnCode();
-      if (ReturnCode.isSuccess(returnCode)) {
-        Log.logPrint("自动解包成功: $outputPath");
-        _outputPath = outputPath;
+    // ignore: unawaited_futures
+    UnpackQueue.instance.enqueue(() async {
+      var completer = Completer<void>();
+      await FFmpegKit.executeWithArgumentsAsync(args, (session) async {
+        var returnCode = await session.getReturnCode();
+        if (ReturnCode.isSuccess(returnCode)) {
+          Log.logPrint("自动解包成功: $outputPath");
+          _outputPath = outputPath;
 
-        // 解包成功后，按设置决定是否删除 TS 文件
-        if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
-          try {
-            var tsFile = File(tsPath);
-            if (await tsFile.exists()) {
-              await tsFile.delete();
-              Log.logPrint("已删除源 TS 文件: $tsPath");
+          // 解包成功后，按设置决定是否删除 TS 文件
+          if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
+            try {
+              var tsFile = File(tsPath);
+              if (await tsFile.exists()) {
+                await tsFile.delete();
+                Log.logPrint("已删除源 TS 文件: $tsPath");
+              }
+            } catch (e) {
+              Log.logPrint("删除源 TS 文件失败: $e");
             }
-          } catch (e) {
-            Log.logPrint("删除源 TS 文件失败: $e");
           }
+        } else {
+          Log.logPrint("自动解包失败: $tsPath");
         }
-      } else {
-        Log.logPrint("自动解包失败: $tsPath");
-      }
-      completer.complete();
+        completer.complete();
+      });
+      await completer.future;
+    }).catchError((e) {
+      Log.logPrint("自动解包任务异常: $tsPath, $e");
     });
-    // 解包任务与录制共享 FFmpegKit 插件的固定线程池，
-    // 线程池满时任务会排队，长时间等待会阻塞 session 清理
-    // （_onFinished → onFinished 移除 activeSessions）。
-    // 超时后不再等待，优先保证录制名额释放；
-    // 解包任务本身最终仍会执行，文件不受影响。
-    await completer.future.timeout(
-      const Duration(minutes: 5),
-      onTimeout: () {
-        Log.logPrint("自动解包等待超时（可能排队中），不阻塞录制清理: $tsPath");
-      },
-    );
   }
 
   Future<void> _renameFileWithEndTime() async {

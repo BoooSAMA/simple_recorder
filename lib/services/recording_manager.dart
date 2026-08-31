@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/services/recording_service.dart';
 
@@ -14,7 +16,15 @@ class RecordingManager extends GetxService {
   /// session 自然结束时广播事件，供续录等外部逻辑监听
   final onSessionEnded = StreamController<RecordingSession>.broadcast();
 
-  int get maxConcurrent => 20;
+  /// FFmpegKit 插件 Android 端线程池容量（本地补丁 10 → 16，
+  /// 见 third_party/README.md）。录制、解包、FFprobe 共用该池，
+  /// 此处为应用层硬上限，必须 ≤ 插件池容量，否则第 N+1 路会"假启动"。
+  static const int _poolConcurrencyLimit = 16;
+
+  /// 实际生效的并行录制上限：用户设置 (1~16) 与插件池容量取小值
+  int get maxConcurrent => min(
+      AppSettingsController.instance.maxConcurrentRecordings.value,
+      _poolConcurrencyLimit);
 
   bool canStartNew() {
     return activeSessions.length < maxConcurrent;
