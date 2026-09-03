@@ -387,6 +387,7 @@ class RecordingsPage extends StatelessWidget {
         if (controller.isSelectMode.value) {
           controller.toggleSelection(item);
         } else {
+          controller.setCurrentlyPlaying(item.path);
           ShowAudioPlayerSheet.show(
             context,
             filePath: item.path,
@@ -396,12 +397,16 @@ class RecordingsPage extends StatelessWidget {
       },
       child: Obx(() {
         var isSelected = item.isSelected.value;
+        var isCurrentlyPlaying =
+            controller.currentlyPlayingPath.value == item.path;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: controller.isSelectMode.value && isSelected
-                ? theme.colorScheme.primary.withAlpha(15)
-                : null,
+            color: isCurrentlyPlaying
+                ? theme.colorScheme.primary.withAlpha(20)
+                : controller.isSelectMode.value && isSelected
+                    ? theme.colorScheme.primary.withAlpha(15)
+                    : null,
             border: index < total - 1
                 ? Border(
                     bottom: BorderSide(
@@ -455,10 +460,21 @@ class RecordingsPage extends StatelessWidget {
                 ),
               ),
               if (!controller.isSelectMode.value)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Icon(Icons.play_circle_outline,
-                      size: 18, color: Colors.blue),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Obx(() {
+                    var isPlaying =
+                        controller.currentlyPlayingPath.value == item.path;
+                    return Icon(
+                      isPlaying
+                          ? Icons.play_circle
+                          : Icons.play_circle_outline,
+                      size: 18,
+                      color: isPlaying
+                          ? theme.colorScheme.primary
+                          : Colors.blue,
+                    );
+                  }),
                 ),
             ],
           ),

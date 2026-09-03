@@ -70,6 +70,9 @@ class RecordingsController extends GetxController {
   /// 文件排序模式: 0=日期降序(最新在前) 1=日期升序(最旧在前) 2=主播名
   final sortMode = 0.obs;
 
+  /// 当前正在播放（或最近播放过）的文件路径，用于高亮显示
+  final currentlyPlayingPath = RxString('');
+
   int get totalFiles => groups.fold(0, (sum, g) => sum + g.count);
   int get totalFolders => groups.length;
 
@@ -297,5 +300,15 @@ class RecordingsController extends GetxController {
     for (var group in groups) {
       group.isExpanded.value = expand;
     }
+  }
+
+  /// 设置当前播放的文件，用于高亮显示
+  void setCurrentlyPlaying(String path) {
+    currentlyPlayingPath.value = path;
+  }
+
+  /// 清除当前播放状态
+  void clearCurrentlyPlaying() {
+    currentlyPlayingPath.value = '';
   }
 }
