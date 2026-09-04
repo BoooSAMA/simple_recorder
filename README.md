@@ -39,6 +39,7 @@ flutter run
 
 # 5. 打包apk(可选)
 flutter apk
+
 ```
 
 > Android 首次启动会自动请求"管理所有文件"权限（Android 11+）和"通知"权限（Android 13+），请允许以确保前台录制正常。
