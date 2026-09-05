@@ -73,6 +73,9 @@ class RecordingsController extends GetxController {
   /// 当前正在播放（或最近播放过）的文件路径，用于高亮显示
   final currentlyPlayingPath = RxString('');
 
+  /// 当前正在播放（或最近播放过）的文件名，用于浮动播放器标题
+  final currentlyPlayingName = RxString('');
+
   int get totalFiles => groups.fold(0, (sum, g) => sum + g.count);
   int get totalFolders => groups.length;
 
@@ -212,6 +215,16 @@ class RecordingsController extends GetxController {
 
     isLoading.value = false;
 
+    // 当前播放的文件若已不存在（被删除/目录变化）→ 清除播放状态
+    var playingPath = currentlyPlayingPath.value;
+    if (playingPath.isNotEmpty) {
+      var stillExists = groups.any((g) =>
+          g.items.any((item) => item.path == playingPath));
+      if (!stillExists) {
+        clearCurrentlyPlaying();
+      }
+    }
+
     // 异步探测各文件时长
     _probeDurations();
   }
@@ -302,13 +315,15 @@ class RecordingsController extends GetxController {
     }
   }
 
-  /// 设置当前播放的文件，用于高亮显示
-  void setCurrentlyPlaying(String path) {
+  /// 设置当前播放的文件（路径 + 文件名），用于高亮与浮动播放器
+  void setCurrentlyPlaying(String path, String name) {
     currentlyPlayingPath.value = path;
+    currentlyPlayingName.value = name;
   }
 
   /// 清除当前播放状态
   void clearCurrentlyPlaying() {
     currentlyPlayingPath.value = '';
+    currentlyPlayingName.value = '';
   }
 }

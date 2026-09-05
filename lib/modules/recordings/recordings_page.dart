@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import 'package:simple_recorder/modules/recordings/audio_player_sheet.dart';
+import 'package:simple_recorder/modules/recordings/floating_audio_player.dart';
 import 'package:simple_recorder/modules/recordings/recordings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 
@@ -141,6 +141,7 @@ class RecordingsPage extends StatelessWidget {
           children: [
             _buildToolbar(context, controller),
             Expanded(child: _buildFileList(context, controller)),
+            _buildMiniPlayer(context, controller),
             _buildSummaryBar(context, controller),
           ],
         );
@@ -387,12 +388,8 @@ class RecordingsPage extends StatelessWidget {
         if (controller.isSelectMode.value) {
           controller.toggleSelection(item);
         } else {
-          controller.setCurrentlyPlaying(item.path);
-          ShowAudioPlayerSheet.show(
-            context,
-            filePath: item.path,
-            fileName: item.fileName,
-          );
+          // 切换播放文件（浮动播放器自动响应加载并播放）
+          controller.setCurrentlyPlaying(item.path, item.fileName);
         }
       },
       child: Obx(() {
@@ -481,6 +478,21 @@ class RecordingsPage extends StatelessWidget {
         );
       }),
     );
+  }
+
+  /// 底部浮动胶囊迷你播放器（有播放文件时显示，不遮挡文件列表交互）
+  Widget _buildMiniPlayer(
+      BuildContext context, RecordingsController controller) {
+    return Obx(() {
+      var path = controller.currentlyPlayingPath.value;
+      if (path.isEmpty) return const SizedBox.shrink();
+      return FloatingAudioPlayer(
+        key: ValueKey(path),
+        filePath: path,
+        fileName: controller.currentlyPlayingName.value,
+        onClose: () => controller.clearCurrentlyPlaying(),
+      );
+    });
   }
 
   Widget _buildSummaryBar(
