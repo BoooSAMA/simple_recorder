@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -97,6 +99,64 @@ class TsUnpackController extends GetxController {
       }
     }
     return count;
+  }
+
+  /// 检查选中文件是否可合并（同一主播 ≥2 个 TS）
+  bool get canMergeSelected {
+    String? ownerFolder;
+    int count = 0;
+    for (var group in groups) {
+      for (var file in group.files) {
+        if (file.isSelected.value && !file.isRecording) {
+          if (ownerFolder == null) {
+            ownerFolder = group.folderName;
+          } else if (ownerFolder != group.folderName) {
+            return false; // 跨主播，不可合并
+          }
+          count++;
+        }
+      }
+    }
+    return count >= 2;
+  }
+
+  /// 选中文件所属的主播名（仅 canMergeSelected=true 时有效）
+  String? get selectedOwnerName {
+    for (var group in groups) {
+      if (group.files.any((f) => f.isSelected.value)) {
+        return group.folderName;
+      }
+    }
+    return null;
+  }
+
+  /// 选中文件中需要合并的（录制中的跳过），按修改时间排序
+  List<FileItem> get _mergeableSelected {
+    var result = <FileItem>[];
+    for (var group in groups) {
+      for (var file in group.files) {
+        if (file.isSelected.value && !file.isRecording) {
+          result.add(file);
+        }
+      }
+    }
+    // 按修改时间排序，确定合并顺序
+    result.sort((a, b) {
+      var ta = File(a.path).lastModifiedSync();
+      var tb = File(b.path).lastModifiedSync();
+      return ta.compareTo(tb);
+    });
+    return result;
+  }
+
+  /// 获取文件在合并序列中的序号（从 1 开始），不在序列中返回 0
+  int getMergeOrderIndex(FileItem file) {
+    if (!canMergeSelected) return 0;
+    var mergeable = _mergeableSelected;
+    for (var i = 0; i < mergeable.length; i++) {
+      if (mergeable[i].path == file.path) return i + 1;
+    }
+    return 0;
   }
 
   @override
@@ -223,7 +283,7 @@ class TsUnpackController extends GetxController {
     var toDelete = <FileItem>[];
     for (var group in groups) {
       for (var file in group.files) {
-        if (file.isSelected.value && file.isUnpacked.value) {
+        if (file.isSelected.value && !file.isRecording) {
           toDelete.add(file);
         }
       }
@@ -234,7 +294,7 @@ class TsUnpackController extends GetxController {
     var confirm = await Get.dialog<bool>(
       AlertDialog(
         title: const Text("确认删除"),
-        content: Text("将删除 ${toDelete.length} 个已解包的 TS 文件，对应的 M4A 不受影响，是否继续？"),
+        content: Text("将删除 ${toDelete.length} 个 TS 文件，是否继续？"),
         actions: [
           TextButton(
             onPressed: () => Get.back(result: false),
@@ -398,5 +458,120 @@ class TsUnpackController extends GetxController {
   /// 取消批量解包（处理完当前文件后停止）
   void cancelBatch() {
     isProcessing.value = false;
+  }
+
+  /// 合并选中的同一主播的多个 TS 文件
+  Future<void> mergeSelected() async {
+    if (!canMergeSelected) {
+      SmartDialog.showToast("请选择同一主播的至少 2 个 TS 文件");
+      return;
+    }
+
+    var files = _mergeableSelected;
+    // 按修改时间排序，保证拼出的顺序正确
+    files.sort((a, b) {
+      var ta = File(a.path).lastModifiedSync();
+      var tb = File(b.path).lastModifiedSync();
+      return ta.compareTo(tb);
+    });
+
+    // 从文件名解析时间范围，用于输出命名
+    var owner = selectedOwnerName ?? "unknown";
+    var dir = Directory(files.first.path).parent.path;
+    var nameParts = _parseTimeRange(files, owner);
+    var outputPath = "$dir/${nameParts}_merged.ts";
+
+    isProcessing.value = true;
+    progress.value = 0.0;
+    totalFiles.value = files.length;
+    currentFileIndex.value = 0;
+    currentFileName.value = "合并中...";
+
+    try {
+      // 写 concat list 文件
+      var listFile = File("$dir/_concat_list.txt");
+      var sink = listFile.openWrite(mode: FileMode.write);
+      for (var f in files) {
+        var escaped = f.path.replaceAll("'", "'\\''");
+        sink.writeln("file '$escaped'");
+      }
+      await sink.flush();
+      await sink.close();
+
+      // 调用 FFmpeg concat
+      var result = await UnpackQueue.instance.enqueue(
+        () => _runFfmpegConcat(listFile.path, outputPath, (p) {
+          progress.value = p;
+        }),
+      );
+
+      // 删除临时 list 文件
+      if (await listFile.exists()) await listFile.delete();
+
+      if (result) {
+        // 合并成功，删除源文件
+        for (var f in files) {
+          try {
+            var tsFile = File(f.path);
+            if (await tsFile.exists()) await tsFile.delete();
+          } catch (e) {
+            Log.logPrint("删除源文件失败: ${f.fileName} - $e");
+          }
+        }
+        SmartDialog.showToast("合并完成 → ${outputPath.split('/').last}");
+        scanDirectory();
+      } else {
+        SmartDialog.showToast("合并失败，请查看日志");
+      }
+    } catch (e) {
+      Log.logPrint("合并异常: $e");
+      SmartDialog.showToast("合并异常: $e");
+    } finally {
+      isProcessing.value = false;
+      progress.value = 1.0;
+      currentFileName.value = "";
+    }
+  }
+
+  /// 从文件名解析时间范围，返回形如 `userName_2026-09-05_22-13_22-24` 的字符串
+  String _parseTimeRange(List<FileItem> files, String owner) {
+    // 文件名格式: {owner}_{date}_{startTime}_{endTime}.ts
+    // 例如: userName_2026-09-05_22-13_22-19.ts
+    // 也可能是中断文件: userName_2026-09-05_22-13_22-19_interrupted.ts
+    var earliestStart = "99-99";
+    var latestEnd = "00-00";
+    var date = "";
+
+    for (var f in files) {
+      var name = f.fileName.replaceAll('.ts', '');
+      // 去掉 _interrupted 后缀
+      name = name.replaceAll('_interrupted', '');
+      // 按 _ 分割: [owner, date, startTime, endTime]
+      var parts = name.split('_');
+      if (parts.length >= 4) {
+        date = parts[1]; // 取日期（所有文件应同一天）
+        var start = parts[2];
+        var end = parts[3];
+        if (start.compareTo(earliestStart) < 0) earliestStart = start;
+        if (end.compareTo(latestEnd) > 0) latestEnd = end;
+      }
+    }
+
+    return "${owner}_${date}_${earliestStart}_$latestEnd";
+  }
+
+  /// 执行 FFmpeg concat 协议拼接
+  Future<bool> _runFfmpegConcat(
+      String listPath, String outputPath, void Function(double) onProgress) async {
+    try {
+      var session = await FFmpegKit.execute(
+        "-f concat -safe 0 -i '$listPath' -c copy -y '$outputPath'",
+      );
+      var returnCode = await session.getReturnCode();
+      return ReturnCode.isSuccess(returnCode);
+    } catch (e) {
+      Log.logPrint("FFmpeg concat 执行失败: $e");
+      return false;
+    }
   }
 }

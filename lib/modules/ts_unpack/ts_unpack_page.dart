@@ -487,16 +487,45 @@ class TsUnpackPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      file.fileName,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: isUnpacked ? FontWeight.normal : FontWeight.w500,
-                        color: isUnpacked
-                            ? theme.colorScheme.onSurface.withAlpha(120)
-                            : theme.colorScheme.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        // 合并序号
+                        Obx(() {
+                          var mergeIdx = controller.getMergeOrderIndex(file);
+                          if (mergeIdx == 0) return const SizedBox.shrink();
+                          return Container(
+                            width: 20,
+                            height: 20,
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              "$mergeIdx",
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          );
+                        }),
+                        Expanded(
+                          child: Text(
+                            file.fileName,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: isUnpacked ? FontWeight.normal : FontWeight.w500,
+                              color: isUnpacked
+                                  ? theme.colorScheme.onSurface.withAlpha(120)
+                                  : theme.colorScheme.onSurface,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                     Row(
                       children: [
@@ -694,8 +723,7 @@ class TsUnpackPage extends StatelessWidget {
 
       // ── 空闲状态：两态 pill，主动作只留图标 ──
       var selected = controller.selectedCount;
-      var delSelected = controller.unpackedSelectedCount;
-      // 未选中：只给全选入口 + 禁用态解包图标
+      // 未选中：只给全选入口 + 禁用态合并/解包图标
       if (selected == 0) {
         return pill(
           Row(
@@ -728,6 +756,22 @@ class TsUnpackPage extends StatelessWidget {
                 color: theme.dividerColor,
                 margin: const EdgeInsets.symmetric(horizontal: 4),
               ),
+              // 合并（图标，禁用态）
+              IconButton(
+                onPressed: null,
+                icon: const Icon(Icons.merge, size: 20),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(8),
+                tooltip: "合并",
+              ),
+              // 删除（图标，禁用态）
+              IconButton(
+                onPressed: null,
+                icon: const Icon(Icons.delete_outline, size: 20),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(8),
+                tooltip: "删除",
+              ),
               // 解包（图标，禁用态）
               FilledButton(
                 onPressed: null,
@@ -742,7 +786,7 @@ class TsUnpackPage extends StatelessWidget {
           ),
         );
       }
-      // 有选中：计数 + 清空 + 删除图标 + 解包图标
+      // 有选中：计数 + 清空 + 合并 + 删除 + 解包
       return pill(
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -770,11 +814,20 @@ class TsUnpackPage extends StatelessWidget {
               color: theme.dividerColor,
               margin: const EdgeInsets.symmetric(horizontal: 4),
             ),
-            // 删除（图标，仅对已解包文件）
+            // 合并（图标，仅同一主播 ≥2 个可点）
             IconButton(
-              onPressed: delSelected > 0
-                  ? () => controller.deleteSelected()
+              onPressed: controller.canMergeSelected
+                  ? () => controller.mergeSelected()
                   : null,
+              icon: const Icon(Icons.merge, size: 20),
+              color: theme.colorScheme.primary,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(8),
+              tooltip: "合并同一主播的 TS 文件",
+            ),
+            // 删除（图标，选中即可点）
+            IconButton(
+              onPressed: () => controller.deleteSelected(),
               icon: const Icon(Icons.delete_outline, size: 20),
               color: theme.colorScheme.error,
               visualDensity: VisualDensity.compact,
