@@ -260,6 +260,19 @@ class TsUnpackController extends GetxController {
     }
   }
 
+  /// 全选/全不选某位主播的可操作文件（录制中的除外）
+  void toggleGroupSelection(int index) {
+    if (index < 0 || index >= groups.length) return;
+    var targets =
+        groups[index].files.where((f) => !f.isRecording).toList();
+    if (targets.isEmpty) return;
+    var allSelected = targets.every((f) => f.isSelected.value);
+    for (var f in targets) {
+      f.isSelected.value = !allSelected;
+    }
+    update();
+  }
+
   /// 批量解包所有选中的文件
   Future<void> startBatchUnpack() async {
     var selectedFiles = <FileItem>[];

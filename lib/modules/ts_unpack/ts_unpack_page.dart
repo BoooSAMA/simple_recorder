@@ -52,10 +52,11 @@ class TsUnpackPage extends StatelessWidget {
         return Column(
           children: [
             Expanded(child: _buildFileList(context, controller)),
-            _buildBottomBar(context, controller),
           ],
         );
       }),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: _buildFloatingBar(context, controller),
     );
   }
 
@@ -122,7 +123,7 @@ class TsUnpackPage extends StatelessWidget {
   Widget _buildFileList(BuildContext context, TsUnpackController controller) {
     var theme = Theme.of(context);
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 88),
       itemCount: controller.groups.length,
       itemBuilder: (context, groupIndex) {
         var group = controller.groups[groupIndex];
@@ -231,6 +232,41 @@ class TsUnpackPage extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(width: 4),
+                      // 全选该主播：三态勾选（全选/部分/未选）
+                      Obx(() {
+                        var targets = group.files
+                            .where((f) => !f.isRecording)
+                            .toList();
+                        var selCount = targets
+                            .where((f) => f.isSelected.value)
+                            .length;
+                        var allSel = targets.isNotEmpty &&
+                            selCount == targets.length;
+                        var someSel =
+                            selCount > 0 && !allSel;
+                        return GestureDetector(
+                          onTap: targets.isEmpty
+                              ? null
+                              : () => controller
+                                  .toggleGroupSelection(groupIndex),
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: Icon(
+                              allSel
+                                  ? Icons.check_box
+                                  : someSel
+                                      ? Icons.indeterminate_check_box
+                                      : Icons.check_box_outline_blank,
+                              size: 20,
+                              color: allSel
+                                  ? Colors.orange
+                                  : theme.colorScheme.onSurface
+                                      .withAlpha(100),
+                            ),
+                          ),
+                        );
+                      }),
                       Icon(
                         isExpanded
                             ? Icons.expand_less
@@ -427,171 +463,207 @@ class TsUnpackPage extends StatelessWidget {
     });
   }
 
-  /// 底部操作栏
-  Widget _buildBottomBar(BuildContext context, TsUnpackController controller) {
-    var theme = Theme.of(context);
-    var bottomInset = MediaQuery.of(context).padding.bottom;
-
+  /// 底部悬浮操作栏：5 个动作共享一个 pill 基底
+  Widget _buildFloatingBar(
+      BuildContext context, TsUnpackController controller) {
     return Obx(() {
+      var theme = Theme.of(context);
+      // 空状态下 body 已是占位图，不悬浮操作栏
+      if (!controller.hasSavePath.value || controller.groups.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      Widget pill(Widget child) {
+        return Material(
+          elevation: 6,
+          color: theme.colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(28),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: child,
+          ),
+        );
+      }
+
       if (controller.isProcessing.value) {
         // ── 处理中状态 ──
         return Container(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + bottomInset),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.dividerColor, width: 0.5),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width - 32,
+          ),
+          child: pill(
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 进度条 + 百分比
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: controller.progress.value,
+                          minHeight: 6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      width: 42,
+                      child: Text(
+                        "${(controller.progress.value * 100).toStringAsFixed(0)}%",
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // 进度文字 + 取消
+                Row(
+                  children: [
+                    Text(
+                      "${controller.currentFileIndex.value}/${controller.totalFiles.value}",
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        controller.currentFileName.value,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withAlpha(150),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 28,
+                      child: OutlinedButton(
+                        onPressed: () => controller.cancelBatch(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
+                        ),
+                        child:
+                            const Text("取消", style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          child: Column(
+        );
+      }
+
+      // ── 空闲状态：两态 pill，主动作只留图标 ──
+      var selected = controller.selectedCount;
+      var delSelected = controller.unpackedSelectedCount;
+      // 未选中：只给全选入口 + 禁用态解包图标
+      if (selected == 0) {
+        return pill(
+          Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 进度条 + 百分比
-              Row(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: controller.progress.value,
-                        minHeight: 6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 42,
-                    child: Text(
-                      "${(controller.progress.value * 100).toStringAsFixed(0)}%",
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.primary,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
-                  ),
-                ],
+              // 全选中断
+              TextButton(
+                onPressed: () => controller.selectInterrupted(),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: Colors.red,
+                ),
+                child:
+                    const Text("全选中断", style: TextStyle(fontSize: 12)),
               ),
-              const SizedBox(height: 8),
-              // 进度文字
-              Row(
-                children: [
-                  Text(
-                    "${controller.currentFileIndex.value}/${controller.totalFiles.value}",
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      controller.currentFileName.value,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withAlpha(150),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    height: 28,
-                    child: OutlinedButton(
-                      onPressed: () => controller.cancelBatch(),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        visualDensity: VisualDensity.compact,
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                      ),
-                      child: const Text("取消", style: TextStyle(fontSize: 12)),
-                    ),
-                  ),
-                ],
+              // 全选已解
+              TextButton(
+                onPressed: () => controller.selectUnpacked(),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  visualDensity: VisualDensity.compact,
+                ),
+                child:
+                    const Text("全选已解", style: TextStyle(fontSize: 12)),
+              ),
+              Container(
+                width: 1,
+                height: 24,
+                color: theme.dividerColor,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+              ),
+              // 解包（图标，禁用态）
+              FilledButton(
+                onPressed: null,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.all(10),
+                  visualDensity: VisualDensity.compact,
+                  shape: const CircleBorder(),
+                ),
+                child: const Icon(Icons.unarchive, size: 18),
               ),
             ],
           ),
         );
       }
-
-      // ── 空闲状态 ──
-      var selected = controller.selectedCount;
-      var delSelected = controller.unpackedSelectedCount;
-      return Container(
-        padding: EdgeInsets.fromLTRB(12, 8, 12, 16 + bottomInset),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.dividerColor, width: 0.5),
-          ),
-        ),
-        child: Row(
+      // 有选中：计数 + 清空 + 删除图标 + 解包图标
+      return pill(
+        Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // 全选中断
-            TextButton(
-              onPressed: () => controller.selectInterrupted(),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                visualDensity: VisualDensity.compact,
-                foregroundColor: Colors.red,
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                "$selected 已选",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              child: const Text("全选中断", style: TextStyle(fontSize: 12)),
             ),
-            const SizedBox(width: 2),
-            // 全选已解
-            TextButton(
-              onPressed: () => controller.selectUnpacked(),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                visualDensity: VisualDensity.compact,
-              ),
-              child: const Text("全选已解", style: TextStyle(fontSize: 12)),
-            ),
-            const SizedBox(width: 2),
-            // 取消选择
-            TextButton(
+            // 清空选择
+            IconButton(
               onPressed: () => controller.deselectAll(),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                visualDensity: VisualDensity.compact,
-              ),
-              child: const Text("取消", style: TextStyle(fontSize: 12)),
+              icon: const Icon(Icons.close, size: 18),
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(8),
+              tooltip: "清空选择",
             ),
-            const Spacer(),
-            // 删除（仅对已解包文件）
-            FilledButton.icon(
+            Container(
+              width: 1,
+              height: 24,
+              color: theme.dividerColor,
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+            // 删除（图标，仅对已解包文件）
+            IconButton(
               onPressed: delSelected > 0
                   ? () => controller.deleteSelected()
                   : null,
-              icon: const Icon(Icons.delete_outline, size: 16),
-              label: const Text("删除", style: TextStyle(fontSize: 13)),
-              style: FilledButton.styleFrom(
-                backgroundColor: theme.colorScheme.error,
-                foregroundColor: theme.colorScheme.onError,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                visualDensity: VisualDensity.compact,
-                disabledBackgroundColor:
-                    theme.colorScheme.error.withAlpha(60),
-                disabledForegroundColor:
-                    theme.colorScheme.onError.withAlpha(100),
-              ),
+              icon: const Icon(Icons.delete_outline, size: 20),
+              color: theme.colorScheme.error,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(8),
+              tooltip: "删除",
             ),
-            const SizedBox(width: 8),
-            // 解包
-            FilledButton.icon(
-              onPressed:
-                  selected > 0 ? () => controller.startBatchUnpack() : null,
-              icon: const Icon(Icons.unarchive, size: 16),
-              label: const Text(
-                "解包",
-                style: TextStyle(fontSize: 13),
-              ),
+            const SizedBox(width: 4),
+            // 解包（图标）
+            FilledButton(
+              onPressed: () => controller.startBatchUnpack(),
               style: FilledButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.all(12),
                 visualDensity: VisualDensity.compact,
+                shape: const CircleBorder(),
               ),
+              child: const Icon(Icons.unarchive, size: 20),
             ),
           ],
         ),
