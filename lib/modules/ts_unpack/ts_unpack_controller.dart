@@ -74,6 +74,9 @@ class TsUnpackController extends GetxController {
   final currentFileName = "".obs;
   final hasSavePath = true.obs;
 
+  /// 排序模式：0=日期降序（新→旧），1=日期升序（旧→新），2=文件名
+  final sortMode = 0.obs;
+
   /// 计算选中的文件总数（不含已解包和录制中的）
   int get selectedCount {
     int count = 0;
@@ -152,6 +155,41 @@ class TsUnpackController extends GetxController {
         files: fileItems,
       ));
     }
+
+    // 按当前排序模式排组
+    _sortGroups();
+  }
+
+  /// 按当前排序模式对分组排序
+  void _sortGroups() {
+    var list = groups.toList();
+    switch (sortMode.value) {
+      case 0: // 日期降序（最新在前）
+        list.sort((a, b) => _latestFileTime(b).compareTo(_latestFileTime(a)));
+        break;
+      case 1: // 日期升序
+        list.sort((a, b) => _latestFileTime(a).compareTo(_latestFileTime(b)));
+        break;
+      case 2: // 主播名
+        list.sort((a, b) => a.folderName.compareTo(b.folderName));
+        break;
+    }
+    groups.assignAll(list);
+  }
+
+  /// 取分组中最新文件的修改时间（用于排序）
+  DateTime _latestFileTime(FileGroup group) {
+    if (group.files.isEmpty) return DateTime.fromMillisecondsSinceEpoch(0);
+    var latest = group.files
+        .map((f) => File(f.path).lastModifiedSync())
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    return latest;
+  }
+
+  /// 切换排序模式
+  void setSortMode(int mode) {
+    sortMode.value = mode;
+    _sortGroups();
   }
 
   /// 全选所有可解包的文件
@@ -258,6 +296,15 @@ class TsUnpackController extends GetxController {
     if (index >= 0 && index < groups.length) {
       groups[index].isExpanded.toggle();
     }
+  }
+
+  /// 一键全部展开 / 全部收起
+  void toggleCollapseAll() {
+    var anyExpanded = groups.any((g) => g.isExpanded.value);
+    for (var g in groups) {
+      g.isExpanded.value = !anyExpanded;
+    }
+    update();
   }
 
   /// 全选/全不选某位主播的可操作文件（录制中的除外）
