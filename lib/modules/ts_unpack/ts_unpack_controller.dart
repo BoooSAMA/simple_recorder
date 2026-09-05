@@ -460,6 +460,298 @@ class TsUnpackController extends GetxController {
     isProcessing.value = false;
   }
 
+  /// 检测到的碎片组合数量
+  int get fragmentCount {
+    var count = 0;
+    for (var i = 0; i < groups.length; i++) {
+      count += getGroupFragmentCount(i);
+    }
+    return count;
+  }
+
+  /// 检测指定主播的碎片数量
+  int getGroupFragmentCount(int groupIndex) {
+    if (groupIndex >= groups.length) return 0;
+    var group = groups[groupIndex];
+    var tsFiles = group.files
+        .where((f) => !f.isRecording && !f.isUnpacked.value)
+        .toList();
+    if (tsFiles.length < 2) return 0;
+
+    var parsed = <_ParsedFile>[];
+    for (var f in tsFiles) {
+      var info = _parseFileName(f.fileName, f);
+      if (info != null) parsed.add(info);
+    }
+    parsed.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+    var byDate = <String, List<_ParsedFile>>{};
+    for (var p in parsed) {
+      byDate.putIfAbsent(p.date, () => []).add(p);
+    }
+
+    var count = 0;
+    for (var entry in byDate.entries) {
+      var files = entry.value;
+      if (files.length < 2) continue;
+      var current = <_ParsedFile>[files.first];
+      for (var i = 1; i < files.length; i++) {
+        if (_minutesDiff(current.last.endTime, files[i].startTime) <= 5) {
+          current.add(files[i]);
+        } else {
+          if (current.length >= 2) count++;
+          current = [files[i]];
+        }
+      }
+      if (current.length >= 2) count++;
+    }
+    return count;
+  }
+
+  /// 合并指定主播的碎片
+  Future<void> mergeGroupFragments(int groupIndex) async {
+    if (groupIndex >= groups.length) return;
+    var group = groups[groupIndex];
+    var fragments = _detectFragmentsForGroup(group);
+    if (fragments.isEmpty) {
+      SmartDialog.showToast("未检测到碎片文件");
+      return;
+    }
+
+    var totalCount = fragments.fold<int>(0, (s, g) => s + g.files.length);
+
+    var confirm = await Get.dialog<bool>(
+      AlertDialog(
+        title: const Text("合并碎片"),
+        content: Text(
+            "检测到 ${group.folderName} 的 ${fragments.length} 组碎片，共 $totalCount 个文件\n将自动按时间顺序合并"),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text("取消"),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text("合并"),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    isProcessing.value = true;
+    progress.value = 0.0;
+    totalFiles.value = totalCount;
+    currentFileIndex.value = 0;
+    currentFileName.value = "";
+
+    var successCount = 0;
+    var failCount = 0;
+
+    for (var frag in fragments) {
+      var dir = Directory(frag.files.first.item.path).parent.path;
+      var outputPath =
+          "$dir/${frag.owner}_${frag.date}_${frag.earliestStart}_${frag.latestEnd}_merged.ts";
+
+      var listFile = File("$dir/_concat_list.txt");
+      var sink = listFile.openWrite(mode: FileMode.write);
+      for (var f in frag.files) {
+        var escaped = f.item.path.replaceAll("'", "'\\''");
+        sink.writeln("file '$escaped'");
+      }
+      await sink.flush();
+      await sink.close();
+
+      currentFileIndex.value++;
+      currentFileName.value =
+          "${frag.owner} (${frag.files.length} 个片段)";
+
+      var result = await UnpackQueue.instance.enqueue(
+        () => _runFfmpegConcat(listFile.path, outputPath, (p) {
+          var base = (successCount + failCount) / totalCount;
+          var weight = frag.files.length / totalCount;
+          progress.value = base + p * weight;
+        }),
+      );
+
+      if (await listFile.exists()) await listFile.delete();
+
+      if (result) {
+        for (var f in frag.files) {
+          try {
+            var tsFile = File(f.item.path);
+            if (await tsFile.exists()) await tsFile.delete();
+          } catch (e) {
+            Log.logPrint("删除源文件失败: ${f.item.fileName} - $e");
+          }
+        }
+        successCount += frag.files.length;
+      } else {
+        failCount += frag.files.length;
+      }
+    }
+
+    isProcessing.value = false;
+    progress.value = 1.0;
+    currentFileName.value = "";
+
+    var summary = "碎片合并完成：$successCount 个文件已合并";
+    if (failCount > 0) summary += "，$failCount 个失败";
+    SmartDialog.showToast(summary);
+
+    scanDirectory();
+  }
+
+  /// 检测指定主播的碎片
+  List<_FragmentGroup> _detectFragmentsForGroup(dynamic group) {
+    var result = <_FragmentGroup>[];
+    var tsFiles = group.files
+        .where((f) => !f.isRecording && !f.isUnpacked.value)
+        .toList();
+    if (tsFiles.length < 2) return result;
+
+    var parsed = <_ParsedFile>[];
+    for (var f in tsFiles) {
+      var info = _parseFileName(f.fileName, f);
+      if (info != null) parsed.add(info);
+    }
+    parsed.sort((a, b) => a.startTime.compareTo(b.startTime));
+
+    var byDate = <String, List<_ParsedFile>>{};
+    for (var p in parsed) {
+      byDate.putIfAbsent(p.date, () => []).add(p);
+    }
+
+    for (var entry in byDate.entries) {
+      var files = entry.value;
+      if (files.length < 2) continue;
+      var groups = <List<_ParsedFile>>[];
+      var current = <_ParsedFile>[files.first];
+      for (var i = 1; i < files.length; i++) {
+        if (_minutesDiff(current.last.endTime, files[i].startTime) <= 5) {
+          current.add(files[i]);
+        } else {
+          if (current.length >= 2) groups.add(current);
+          current = [files[i]];
+        }
+      }
+      if (current.length >= 2) groups.add(current);
+
+      for (var g in groups) {
+        result.add(_FragmentGroup(
+          owner: group.folderName,
+          date: entry.key,
+          files: g,
+          earliestStart: g.first.startTime,
+          latestEnd: g.last.endTime,
+        ));
+      }
+    }
+    return result;
+  }
+
+  /// 一键合并所有检测到的碎片
+  Future<void> mergeAllFragments() async {
+    // 收集所有碎片
+    var allFragments = <_FragmentGroup>[];
+    for (var i = 0; i < groups.length; i++) {
+      allFragments.addAll(_detectFragmentsForGroup(groups[i]));
+    }
+    if (allFragments.isEmpty) {
+      SmartDialog.showToast("未检测到碎片文件");
+      return;
+    }
+
+    // 计算总文件数
+    var totalCount = allFragments.fold<int>(0, (s, g) => s + g.files.length);
+
+    // 确认对话框
+    var confirm = await Get.dialog<bool>(
+      AlertDialog(
+        title: const Text("一键合并碎片"),
+        content: Text("检测到 ${allFragments.length} 组碎片，共 $totalCount 个文件\n将自动按时间顺序合并"),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text("取消"),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text("合并"),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    isProcessing.value = true;
+    progress.value = 0.0;
+    totalFiles.value = totalCount;
+    currentFileIndex.value = 0;
+    currentFileName.value = "";
+
+    var successCount = 0;
+    var failCount = 0;
+
+    for (var group in allFragments) {
+      var dir = Directory(group.files.first.item.path).parent.path;
+      var outputPath =
+          "$dir/${group.owner}_${group.date}_${group.earliestStart}_${group.latestEnd}_merged.ts";
+
+      // 写 concat list
+      var listFile = File("$dir/_concat_list.txt");
+      var sink = listFile.openWrite(mode: FileMode.write);
+      for (var f in group.files) {
+        var escaped = f.item.path.replaceAll("'", "'\\''");
+        sink.writeln("file '$escaped'");
+      }
+      await sink.flush();
+      await sink.close();
+
+      currentFileIndex.value++;
+      currentFileName.value =
+          "${group.owner} (${group.files.length} 个片段)";
+
+      var result = await UnpackQueue.instance.enqueue(
+        () => _runFfmpegConcat(listFile.path, outputPath, (p) {
+          // 单组进度
+          var base = (successCount + failCount) / totalCount;
+          var weight = group.files.length / totalCount;
+          progress.value = base + p * weight;
+        }),
+      );
+
+      // 删除临时 list
+      if (await listFile.exists()) await listFile.delete();
+
+      if (result) {
+        // 删除源文件
+        for (var f in group.files) {
+          try {
+            var tsFile = File(f.item.path);
+            if (await tsFile.exists()) await tsFile.delete();
+          } catch (e) {
+            Log.logPrint("删除源文件失败: ${f.item.fileName} - $e");
+          }
+        }
+        successCount += group.files.length;
+      } else {
+        failCount += group.files.length;
+        Log.logPrint("合并失败: ${group.owner} ${group.date}");
+      }
+    }
+
+    isProcessing.value = false;
+    progress.value = 1.0;
+    currentFileName.value = "";
+
+    var summary = "碎片合并完成：$successCount 个文件已合并";
+    if (failCount > 0) summary += "，$failCount 个失败";
+    SmartDialog.showToast(summary);
+
+    scanDirectory();
+  }
+
   /// 合并选中的同一主播的多个 TS 文件
   Future<void> mergeSelected() async {
     if (!canMergeSelected) {
@@ -574,4 +866,65 @@ class TsUnpackController extends GetxController {
       return false;
     }
   }
+
+  /// 解析文件名，返回时间信息
+  _ParsedFile? _parseFileName(String fileName, FileItem item) {
+    var name = fileName.replaceAll('.ts', '').replaceAll('_interrupted', '');
+    var parts = name.split('_');
+    // 格式: {owner}_{date}_{startTime}_{endTime}
+    if (parts.length < 4) return null;
+    var date = parts[1];
+    var startTime = parts[2];
+    var endTime = parts[3];
+    // 验证时间格式 HH-MM
+    if (startTime.length != 5 || endTime.length != 5) return null;
+    return _ParsedFile(
+      date: date,
+      startTime: startTime,
+      endTime: endTime,
+      item: item,
+    );
+  }
+
+  /// 计算两个 HH-MM 时间字符串之间的分钟差
+  int _minutesDiff(String time1, String time2) {
+    var t1 = time1.split('-');
+    var t2 = time2.split('-');
+    if (t1.length != 2 || t2.length != 2) return 9999;
+    var m1 = int.tryParse(t1[0])! * 60 + int.tryParse(t1[1])!;
+    var m2 = int.tryParse(t2[0])! * 60 + int.tryParse(t2[1])!;
+    return (m2 - m1).abs();
+  }
+}
+
+/// 解析后的文件时间信息
+class _ParsedFile {
+  final String date;
+  final String startTime;
+  final String endTime;
+  final FileItem item;
+
+  _ParsedFile({
+    required this.date,
+    required this.startTime,
+    required this.endTime,
+    required this.item,
+  });
+}
+
+/// 检测到的碎片组合
+class _FragmentGroup {
+  final String owner;
+  final String date;
+  final List<_ParsedFile> files;
+  final String earliestStart;
+  final String latestEnd;
+
+  _FragmentGroup({
+    required this.owner,
+    required this.date,
+    required this.files,
+    required this.earliestStart,
+    required this.latestEnd,
+  });
 }

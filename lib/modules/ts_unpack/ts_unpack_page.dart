@@ -261,9 +261,6 @@ class TsUnpackPage extends StatelessWidget {
             // ── 分组表头 ──
             Obx(() {
               var isExpanded = group.isExpanded.value;
-              var hasInterrupted = group.interruptedCount > 0;
-              var recordingCount =
-                  group.files.where((f) => f.isRecording).length;
               return InkWell(
                 onTap: () => controller.toggleGroup(groupIndex),
                 child: Container(
@@ -293,70 +290,37 @@ class TsUnpackPage extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        "${group.totalCount}个文件",
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withAlpha(150),
-                        ),
-                      ),
-                      if (hasInterrupted) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withAlpha(25),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            "⚠ ${group.interruptedCount}",
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.red,
-                              fontWeight: FontWeight.w600,
+                      // 合并碎片按钮（有碎片时显示）
+                      Obx(() {
+                        var count = controller.getGroupFragmentCount(groupIndex);
+                        if (count == 0) return const SizedBox.shrink();
+                        return GestureDetector(
+                          onTap: () => controller.mergeGroupFragments(groupIndex),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withAlpha(20),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.merge, size: 14, color: Colors.teal),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "合并($count)",
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.teal,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                      if (recordingCount > 0) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withAlpha(25),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            "● $recordingCount",
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (group.unpackedCount > 0) ...[
-                        const SizedBox(width: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withAlpha(25),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            "✅ ${group.unpackedCount}",
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.green,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+                        );
+                      }),
                       const SizedBox(width: 4),
                       // 全选该主播：三态勾选（全选/部分/未选）
                       Obx(() {
@@ -723,7 +687,7 @@ class TsUnpackPage extends StatelessWidget {
 
       // ── 空闲状态：两态 pill，主动作只留图标 ──
       var selected = controller.selectedCount;
-      // 未选中：只给全选入口 + 禁用态合并/解包图标
+      // 未选中：全选入口 + 合并/删除/解包图标
       if (selected == 0) {
         return pill(
           Row(
