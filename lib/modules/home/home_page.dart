@@ -7,6 +7,7 @@ import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/modules/home/home_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
+import 'package:simple_recorder/services/global_player_controller.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 
 class HomePage extends StatelessWidget {
@@ -168,10 +169,20 @@ class HomePage extends StatelessWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Get.toNamed(RoutePath.kSearch),
-        child: const Icon(Icons.search),
-      ),
+      // 全局播放器显示时，搜索 FAB 上移避让（收起态只需小避让）
+      floatingActionButton: Obx(() {
+        final c = GlobalPlayerController.instance;
+        final lift = !c.isVisible
+            ? 0
+            : (c.isCollapsed.value ? 60 : 250);
+        return Padding(
+          padding: EdgeInsets.only(bottom: lift.toDouble()),
+          child: FloatingActionButton(
+            onPressed: () => Get.toNamed(RoutePath.kSearch),
+            child: const Icon(Icons.search),
+          ),
+        );
+      }),
       body: Obx(() {
         if (controller.followList.isEmpty) {
           return Center(

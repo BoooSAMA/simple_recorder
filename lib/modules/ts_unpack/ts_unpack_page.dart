@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import 'package:simple_recorder/modules/ts_unpack/ts_unpack_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
+import 'package:simple_recorder/services/global_player_controller.dart';
 
 class TsUnpackPage extends StatelessWidget {
   const TsUnpackPage({super.key});
@@ -57,7 +58,16 @@ class TsUnpackPage extends StatelessWidget {
         );
       }),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _buildFloatingBar(context, controller),
+      // 全局播放器显示时，操作 pill 上移避让（收起态只需小避让）
+      floatingActionButton: Obx(() {
+        final c = GlobalPlayerController.instance;
+        final lift =
+            !c.isVisible ? 0 : (c.isCollapsed.value ? 60 : 250);
+        return Padding(
+          padding: EdgeInsets.only(bottom: lift.toDouble()),
+          child: _buildFloatingBar(context, controller),
+        );
+      }),
     );
   }
 

@@ -12,9 +12,11 @@ import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/models/db/recording_task.dart';
+import 'package:simple_recorder/modules/recordings/floating_audio_player.dart';
 import 'package:simple_recorder/routes/app_pages.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/db_service.dart';
+import 'package:simple_recorder/services/global_player_controller.dart';
 import 'package:simple_recorder/services/local_storage_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_live_core/simple_live_core.dart';
@@ -44,6 +46,8 @@ void main() async {
 
   Get.put(AppSettingsController());
   Get.put(RecordingManager());
+  // 全局音频播放器（常驻单例，跨页面保持播放）
+  Get.put(GlobalPlayerController(), permanent: true);
 
   // 新用户首启：请求通知权限和存储权限
   _requestPermissions();
@@ -229,7 +233,13 @@ class MyApp extends StatelessWidget {
             data: mediaQuery.copyWith(
               textScaler: const TextScaler.linear(1.0),
             ),
-            child: child!,
+            // 全局悬浮播放器：叠在所有路由页面之上，跳转页面不中断播放
+            child: Stack(
+              children: [
+                child!,
+                const GlobalPlayerOverlay(),
+              ],
+            ),
           );
         },
       ),

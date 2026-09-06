@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
+import 'package:simple_recorder/services/global_player_controller.dart';
 
 class RecordingItem {
   final String path;
@@ -69,12 +70,6 @@ class RecordingsController extends GetxController {
 
   /// 文件排序模式: 0=日期降序(最新在前) 1=日期升序(最旧在前) 2=主播名
   final sortMode = 0.obs;
-
-  /// 当前正在播放（或最近播放过）的文件路径，用于高亮显示
-  final currentlyPlayingPath = RxString('');
-
-  /// 当前正在播放（或最近播放过）的文件名，用于浮动播放器标题
-  final currentlyPlayingName = RxString('');
 
   int get totalFiles => groups.fold(0, (sum, g) => sum + g.count);
   int get totalFolders => groups.length;
@@ -215,13 +210,13 @@ class RecordingsController extends GetxController {
 
     isLoading.value = false;
 
-    // 当前播放的文件若已不存在（被删除/目录变化）→ 清除播放状态
-    var playingPath = currentlyPlayingPath.value;
+    // 当前播放的文件若已不存在（被删除/目录变化）→ 关闭全局播放器
+    var playingPath = GlobalPlayerController.instance.currentPath.value;
     if (playingPath.isNotEmpty) {
-      var stillExists = groups.any((g) =>
-          g.items.any((item) => item.path == playingPath));
+      var stillExists = groups.any(
+          (g) => g.items.any((item) => item.path == playingPath));
       if (!stillExists) {
-        clearCurrentlyPlaying();
+        GlobalPlayerController.instance.close();
       }
     }
 
@@ -313,17 +308,5 @@ class RecordingsController extends GetxController {
     for (var group in groups) {
       group.isExpanded.value = expand;
     }
-  }
-
-  /// 设置当前播放的文件（路径 + 文件名），用于高亮与浮动播放器
-  void setCurrentlyPlaying(String path, String name) {
-    currentlyPlayingPath.value = path;
-    currentlyPlayingName.value = name;
-  }
-
-  /// 清除当前播放状态
-  void clearCurrentlyPlaying() {
-    currentlyPlayingPath.value = '';
-    currentlyPlayingName.value = '';
   }
 }
