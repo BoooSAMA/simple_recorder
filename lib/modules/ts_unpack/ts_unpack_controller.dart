@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -566,12 +568,16 @@ class TsUnpackController extends GetxController {
       currentFileName.value =
           "${frag.owner} (${frag.files.length} 个片段)";
 
+      // 预先探测各源时长之和，用于 concat 进度换算
+      final fragTotal = await _probeTotalSeconds(
+          frag.files.map((f) => f.item.path).toList());
+
       var result = await UnpackQueue.instance.enqueue(
         () => _runFfmpegConcat(listFile.path, outputPath, (p) {
           var base = (successCount + failCount) / totalCount;
           var weight = frag.files.length / totalCount;
           progress.value = base + p * weight;
-        }),
+        }, totalSeconds: fragTotal),
       );
 
       if (await listFile.exists()) await listFile.delete();
@@ -712,13 +718,17 @@ class TsUnpackController extends GetxController {
       currentFileName.value =
           "${group.owner} (${group.files.length} 个片段)";
 
+      // 预先探测各源时长之和，用于 concat 进度换算
+      final groupTotal = await _probeTotalSeconds(
+          group.files.map((f) => f.item.path).toList());
+
       var result = await UnpackQueue.instance.enqueue(
         () => _runFfmpegConcat(listFile.path, outputPath, (p) {
           // 单组进度
           var base = (successCount + failCount) / totalCount;
           var weight = group.files.length / totalCount;
           progress.value = base + p * weight;
-        }),
+        }, totalSeconds: groupTotal),
       );
 
       // 删除临时 list
@@ -790,11 +800,13 @@ class TsUnpackController extends GetxController {
       await sink.flush();
       await sink.close();
 
-      // 调用 FFmpeg concat
+      // 调用 FFmpeg concat（预先探测总时长用于进度换算）
+      final selTotal =
+          await _probeTotalSeconds(files.map((f) => f.path).toList());
       var result = await UnpackQueue.instance.enqueue(
         () => _runFfmpegConcat(listFile.path, outputPath, (p) {
           progress.value = p;
-        }),
+        }, totalSeconds: selTotal),
       );
 
       // 删除临时 list 文件
@@ -853,18 +865,83 @@ class TsUnpackController extends GetxController {
   }
 
   /// 执行 FFmpeg concat 协议拼接
+  /// FFmpeg concat 拼接（-c copy 直拷）
+  ///
+  /// [totalSeconds] 为各源文件时长之和（concat 输出总时长），用于把
+  /// FFmpeg 日志里的 `time=` 换算成 0.0~1.0 进度；传 0 则无中间进度。
   Future<bool> _runFfmpegConcat(
-      String listPath, String outputPath, void Function(double) onProgress) async {
+    String listPath,
+    String outputPath,
+    void Function(double) onProgress, {
+    double totalSeconds = 0,
+  }) async {
+    final completer = Completer<bool>();
+
+    // 进度统一出口：只允许前进，忽略回退值，避免进度条反复跳动
+    var lastProgress = 0.0;
+    void emit(double p) {
+      p = p.clamp(0.0, 1.0);
+      if (p < lastProgress) return;
+      lastProgress = p;
+      onProgress(p);
+    }
+
     try {
-      var session = await FFmpegKit.execute(
-        "-f concat -safe 0 -i '$listPath' -c copy -y '$outputPath'",
+      await FFmpegKit.executeWithArgumentsAsync(
+        ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', outputPath],
+        (session) async {
+          var returnCode = await session.getReturnCode();
+          if (ReturnCode.isSuccess(returnCode)) {
+            emit(1.0);
+            completer.complete(true);
+          } else {
+            completer.complete(false);
+          }
+        },
+        (log) {
+          if (totalSeconds <= 0) return;
+          var msg = log.getMessage();
+          // 解析当前位置: "time=01:23:45.67"
+          var m = RegExp(r'time=(\d{2}):(\d{2}):(\d{2})\.\d{2}')
+              .firstMatch(msg);
+          if (m != null) {
+            var current = _parseTimeToSeconds(
+              m.group(1)!,
+              m.group(2)!,
+              m.group(3)!,
+            );
+            emit(current / totalSeconds);
+          }
+        },
       );
-      var returnCode = await session.getReturnCode();
-      return ReturnCode.isSuccess(returnCode);
     } catch (e) {
       Log.logPrint("FFmpeg concat 执行失败: $e");
-      return false;
+      if (!completer.isCompleted) completer.complete(false);
     }
+    return completer.future;
+  }
+
+  /// FFprobe 探测多个文件时长并求和（concat 输出时长 = 各源时长之和）
+  Future<double> _probeTotalSeconds(List<String> paths) async {
+    var total = 0.0;
+    for (var p in paths) {
+      try {
+        var session = await FFprobeKit.getMediaInformation(p);
+        var raw = session.getMediaInformation()?.getDuration();
+        var secs = raw != null && raw.isNotEmpty
+            ? double.tryParse(raw) ?? 0
+            : 0;
+        if (secs > 0) total += secs;
+      } catch (_) {
+        // 单个探测失败不影响其他文件
+      }
+    }
+    return total;
+  }
+
+  /// "HH MM SS" → 秒
+  int _parseTimeToSeconds(String h, String m, String s) {
+    return int.parse(h) * 3600 + int.parse(m) * 60 + int.parse(s);
   }
 
   /// 解析文件名，返回时间信息
