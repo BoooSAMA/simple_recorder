@@ -616,80 +616,88 @@ class TsUnpackPage extends StatelessWidget {
       }
 
       if (controller.isProcessing.value) {
-        // ── 处理中状态 ──
+        // ── 处理中状态（底版整体约 1.3x 放大） ──
         return Container(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width - 32,
+            maxWidth: MediaQuery.of(context).size.width - 16,
           ),
-          child: pill(
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 进度条 + 百分比
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: controller.progress.value,
-                          minHeight: 6,
+          child: Material(
+            elevation: 6,
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(28),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 进度条 + 百分比
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(5),
+                          child: LinearProgressIndicator(
+                            value: controller.progress.value,
+                            minHeight: 8,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 42,
-                      child: Text(
-                        "${(controller.progress.value * 100).toStringAsFixed(0)}%",
-                        style: theme.textTheme.labelMedium?.copyWith(
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 52,
+                        child: Text(
+                          "${(controller.progress.value * 100).toStringAsFixed(0)}%",
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.primary,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // 进度文字 + 取消
+                  Row(
+                    children: [
+                      Text(
+                        "${controller.currentFileIndex.value}/${controller.totalFiles.value}",
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.primary,
                         ),
-                        textAlign: TextAlign.right,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // 进度文字 + 取消
-                Row(
-                  children: [
-                    Text(
-                      "${controller.currentFileIndex.value}/${controller.totalFiles.value}",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        controller.currentFileName.value,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withAlpha(150),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          controller.currentFileName.value,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withAlpha(150),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 28,
-                      child: OutlinedButton(
-                        onPressed: () => controller.cancelBatch(),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 34,
+                        child: OutlinedButton(
+                          onPressed: () => controller.cancelBatch(),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16),
+                            visualDensity: VisualDensity.compact,
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                          child: const Text("取消",
+                              style: TextStyle(fontSize: 13)),
                         ),
-                        child:
-                            const Text("取消", style: TextStyle(fontSize: 12)),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         );
