@@ -150,6 +150,15 @@ class SettingsPage extends StatelessWidget {
                 }),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SwitchListTile(
+                      title: const Text("合并后删除源 TS 文件"),
+                      subtitle:
+                          const Text("合并成功后自动删除被合并的 TS 片段"),
+                      value: controller.deleteTsAfterMerge.value,
+                      onChanged: (v) =>
+                          controller.setDeleteTsAfterMerge(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
                       title: const Text("直播恢复自动续录"),
                       subtitle: const Text("直播结束后自动检测主播是否重新开播并恢复录制"),
                       value: controller.autoReRecordEnabled.value,

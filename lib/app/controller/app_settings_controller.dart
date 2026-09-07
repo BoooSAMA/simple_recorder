@@ -35,6 +35,9 @@ class AppSettingsController extends GetxController {
   /// 自动解包后是否删除源 TS 文件
   final deleteTsAfterUnpack = true.obs;
 
+  /// 合并成功后是否删除被合并的 TS 源文件
+  final deleteTsAfterMerge = true.obs;
+
   /// 自动切片录制
   final autoSliceEnabled = false.obs;
   final autoSliceIntervalMinutes = 30.obs;
@@ -106,6 +109,8 @@ class AppSettingsController extends GetxController {
         .getValue("audio_format", Constant.kAudioFormatM4A);
     deleteTsAfterUnpack.value = LocalStorageService.instance
         .getValue("delete_ts_after_unpack", true);
+    deleteTsAfterMerge.value = LocalStorageService.instance
+        .getValue("delete_ts_after_merge", true);
     autoSliceEnabled.value = LocalStorageService.instance
         .getValue("auto_slice_enabled", false);
     autoSliceIntervalMinutes.value = LocalStorageService.instance
@@ -250,6 +255,11 @@ class AppSettingsController extends GetxController {
   void setDeleteTsAfterUnpack(bool value) {
     deleteTsAfterUnpack.value = value;
     LocalStorageService.instance.setValue("delete_ts_after_unpack", value);
+  }
+
+  void setDeleteTsAfterMerge(bool value) {
+    deleteTsAfterMerge.value = value;
+    LocalStorageService.instance.setValue("delete_ts_after_merge", value);
   }
 
   void setAutoSliceEnabled(bool value) {

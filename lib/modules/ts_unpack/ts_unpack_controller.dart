@@ -583,15 +583,18 @@ class TsUnpackController extends GetxController {
       if (await listFile.exists()) await listFile.delete();
 
       if (result) {
-        for (var f in frag.files) {
-          try {
-            var tsFile = File(f.item.path);
-            if (await tsFile.exists()) await tsFile.delete();
-          } catch (e) {
-            Log.logPrint("删除源文件失败: ${f.item.fileName} - $e");
+        successCount += frag.files.length;
+        // 按“合并后删除源 TS 文件”开关决定是否删除源片段
+        if (AppSettingsController.instance.deleteTsAfterMerge.value) {
+          for (var f in frag.files) {
+            try {
+              var tsFile = File(f.item.path);
+              if (await tsFile.exists()) await tsFile.delete();
+            } catch (e) {
+              Log.logPrint("删除源文件失败: ${f.item.fileName} - $e");
+            }
           }
         }
-        successCount += frag.files.length;
       } else {
         failCount += frag.files.length;
       }
@@ -736,15 +739,17 @@ class TsUnpackController extends GetxController {
 
       if (result) {
         // 删除源文件
-        for (var f in group.files) {
-          try {
-            var tsFile = File(f.item.path);
-            if (await tsFile.exists()) await tsFile.delete();
-          } catch (e) {
-            Log.logPrint("删除源文件失败: ${f.item.fileName} - $e");
+        successCount += group.files.length;
+        if (AppSettingsController.instance.deleteTsAfterMerge.value) {
+          for (var f in group.files) {
+            try {
+              var tsFile = File(f.item.path);
+              if (await tsFile.exists()) await tsFile.delete();
+            } catch (e) {
+              Log.logPrint("删除源文件失败: ${f.item.fileName} - $e");
+            }
           }
         }
-        successCount += group.files.length;
       } else {
         failCount += group.files.length;
         Log.logPrint("合并失败: ${group.owner} ${group.date}");
@@ -813,13 +818,15 @@ class TsUnpackController extends GetxController {
       if (await listFile.exists()) await listFile.delete();
 
       if (result) {
-        // 合并成功，删除源文件
-        for (var f in files) {
-          try {
-            var tsFile = File(f.path);
-            if (await tsFile.exists()) await tsFile.delete();
-          } catch (e) {
-            Log.logPrint("删除源文件失败: ${f.fileName} - $e");
+        // 合并成功，按开关决定是否删除源文件
+        if (AppSettingsController.instance.deleteTsAfterMerge.value) {
+          for (var f in files) {
+            try {
+              var tsFile = File(f.path);
+              if (await tsFile.exists()) await tsFile.delete();
+            } catch (e) {
+              Log.logPrint("删除源文件失败: ${f.fileName} - $e");
+            }
           }
         }
         SmartDialog.showToast("合并完成 → ${outputPath.split('/').last}");
