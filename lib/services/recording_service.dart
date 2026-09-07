@@ -534,8 +534,10 @@ class RecordingSession {
     _lastCheckedBytes = -1;
     if (_startTime != null && _outputPath.isNotEmpty && !_discardRequested) {
       await _renameFileWithEndTime();
-      // 成功完成录音后，自动解包 TS → 目标格式
-      if (_outputPath.endsWith('.ts')) {
+      // 成功完成录音后，按“自动解包”开关决定是否解包 TS → 目标格式
+      // （切片与正常结束都走这里；开关关闭则只保留 TS，由用户手动解包）
+      if (_outputPath.endsWith('.ts') &&
+          AppSettingsController.instance.autoUnpackEnabled.value) {
         await _autoUnpackToTargetFormat();
       }
     }

@@ -39,6 +39,9 @@ class AppSettingsController extends GetxController {
   final autoSliceEnabled = false.obs;
   final autoSliceIntervalMinutes = 30.obs;
 
+  /// 自动解包（录制完成/切片后将 TS 解包为目标格式，默认开以保持原有行为）
+  final autoUnpackEnabled = true.obs;
+
   /// 直播恢复自动续录
   final autoReRecordEnabled = false.obs;
   final autoReRecordDelayMinutes = 5.obs;
@@ -107,6 +110,8 @@ class AppSettingsController extends GetxController {
         .getValue("auto_slice_enabled", false);
     autoSliceIntervalMinutes.value = LocalStorageService.instance
         .getValue("auto_slice_interval", 30);
+    autoUnpackEnabled.value = LocalStorageService.instance
+        .getValue("auto_unpack_enabled", true);
     autoReRecordEnabled.value = LocalStorageService.instance
         .getValue("auto_rerecord_enabled", false);
     autoReRecordDelayMinutes.value = LocalStorageService.instance
@@ -256,6 +261,11 @@ class AppSettingsController extends GetxController {
     final clamped = minutes.clamp(1, 240);
     autoSliceIntervalMinutes.value = clamped;
     LocalStorageService.instance.setValue("auto_slice_interval", clamped);
+  }
+
+  void setAutoUnpackEnabled(bool value) {
+    autoUnpackEnabled.value = value;
+    LocalStorageService.instance.setValue("auto_unpack_enabled", value);
   }
 
   void setAutoReRecordEnabled(bool value) {

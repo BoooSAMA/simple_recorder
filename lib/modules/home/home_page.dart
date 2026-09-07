@@ -18,28 +18,7 @@ class HomePage extends StatelessWidget {
     var controller = Get.put(HomeController());
     return Scaffold(
       appBar: AppBar(
-        title: Obx(() {
-          final count = RecordingManager.instance.activeCount.value;
-          if (count == 0) return const SizedBox.shrink();
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                "$count / ${RecordingManager.instance.maxConcurrent}",
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-            ],
-          );
-        }),
+        title: const SizedBox.shrink(),
         leading: Obx(() {
           if (controller.isLoading.value) {
             final progress = controller.loadProgress.value;
@@ -75,6 +54,40 @@ class HomePage extends StatelessWidget {
           );
         }),
         actions: [
+          // 三个跳转键（顶部栏常驻，紧凑图标按钮）
+          GestureDetector(
+            onTap: () => Get.toNamed(RoutePath.kAudioSettings),
+            child: const Tooltip(
+              message: "配置存储路径",
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.folder_outlined, size: 20),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => Get.toNamed(RoutePath.kRecordings),
+            child: const Tooltip(
+              message: "查看录音文件",
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.headphones_outlined, size: 20),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => Get.toNamed(RoutePath.kTsUnpack),
+            child: const Tooltip(
+              message: "TS 解包工具",
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(Icons.unarchive_outlined, size: 20),
+              ),
+            ),
+          ),
           // 一键录制按钮：有置顶直播且未全部开始录制时显示
           Obx(() {
             final count = controller.pinnedReadyCount;
@@ -117,51 +130,7 @@ class HomePage extends StatelessWidget {
               ),
             );
           }),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              switch (value) {
-                case 'audio_path':
-                  Get.toNamed(RoutePath.kAudioSettings);
-                  break;
-                case 'ts_unpack':
-                  Get.toNamed(RoutePath.kTsUnpack);
-                  break;
-                case 'recordings':
-                  Get.toNamed(RoutePath.kRecordings);
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'audio_path',
-                child: ListTile(
-                  leading: Icon(Icons.folder_outlined),
-                  title: Text('配置存储路径'),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'recordings',
-                child: ListTile(
-                  leading: Icon(Icons.headphones_outlined),
-                  title: Text('查看录音文件'),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'ts_unpack',
-                child: ListTile(
-                  leading: Icon(Icons.unarchive_outlined),
-                  title: Text('TS 解包工具'),
-                  contentPadding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                ),
-              ),
-            ],
-          ),
+          // 注：原“三个点”菜单已移除，跳转键在 actions 头部常驻
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Get.toNamed(RoutePath.kSettings),
@@ -169,7 +138,8 @@ class HomePage extends StatelessWidget {
           ),
         ],
       ),
-      // 全局播放器显示时，搜索 FAB 上移避让（收起态只需小避让）
+      // 右下角搜索 FAB（跳转键已搬回顶部栏）
+      // 全局播放器显示时上移避让（收起态只需小避让）
       floatingActionButton: Obx(() {
         final c = GlobalPlayerController.instance;
         final lift = !c.isVisible
@@ -178,6 +148,8 @@ class HomePage extends StatelessWidget {
         return Padding(
           padding: EdgeInsets.only(bottom: lift.toDouble()),
           child: FloatingActionButton(
+            heroTag: 'home_fab_search',
+            tooltip: '搜索',
             onPressed: () => Get.toNamed(RoutePath.kSearch),
             child: const Icon(Icons.search),
           ),
@@ -210,6 +182,8 @@ class HomePage extends StatelessWidget {
 
         return Column(
           children: [
+            // 并行录制格灯条（顶部按钮下方，有录制时才占位）
+            _buildRecordingLedsBar(context),
             _buildFilterBar(context, controller),
             Expanded(
               child: controller.filterMode.value == 0
@@ -219,6 +193,65 @@ class HomePage extends StatelessWidget {
           ],
         );
       }),
+    );
+  }
+
+  /// 并行录制格灯条（顶部按钮下方）：格数 = 最大并行数，绿格数 = 当前录制数
+  /// 无录制时不占位
+  Widget _buildRecordingLedsBar(BuildContext context) {
+    return Obx(() {
+      final count = RecordingManager.instance.activeCount.value;
+      if (count == 0) return const SizedBox.shrink();
+      return _buildRecordingLeds(
+          context, count, RecordingManager.instance.maxConcurrent);
+    });
+  }
+
+  /// 并行录制格灯条：格数 = 最大并行数，绿格数 = 当前录制数
+  /// 格与格之间用 1px 间隔条分隔（max 格配 max-1 条线）
+  Widget _buildRecordingLeds(BuildContext context, int count, int max) {
+    final theme = Theme.of(context);
+    final outline = theme.colorScheme.outline.withAlpha(120);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: Tooltip(
+        message: "并行录制 $count / $max",
+        child: Container(
+          height: 12,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            border: Border.all(color: outline, width: 1),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(max * 2 - 1, (i) {
+              // 奇数位：间隔条
+              if (i.isOdd) {
+                return Container(width: 1, color: outline.withAlpha(150));
+              }
+              final idx = i ~/ 2;
+              BorderRadius? radius;
+              if (idx == 0) {
+                radius = const BorderRadius.horizontal(
+                    left: Radius.circular(4));
+              } else if (idx == max - 1) {
+                radius = const BorderRadius.horizontal(
+                    right: Radius.circular(4));
+              }
+              return Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color:
+                        idx < count ? Colors.green : Colors.transparent,
+                    borderRadius: radius,
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
     );
   }
 

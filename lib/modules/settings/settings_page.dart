@@ -91,16 +91,8 @@ class SettingsPage extends StatelessWidget {
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SwitchListTile(
-                      title: const Text("解包后删除 TS 文件"),
-                      subtitle: const Text("转换完成后自动删除中间 TS 文件"),
-                      value: controller.deleteTsAfterUnpack.value,
-                      onChanged: (v) =>
-                          controller.setDeleteTsAfterUnpack(v),
-                    )),
-                const Divider(height: 1, indent: 16),
-                Obx(() => SwitchListTile(
-                      title: const Text("自动切片录制"),
-                      subtitle: const Text("按设定间隔自动切分并解包 TS 文件"),
+                      title: const Text("自动切片"),
+                      subtitle: const Text("按设定间隔自动切分 TS 文件"),
                       value: controller.autoSliceEnabled.value,
                       onChanged: (v) =>
                           controller.setAutoSliceEnabled(v),
@@ -124,6 +116,33 @@ class SettingsPage extends StatelessWidget {
                         onChanged: enabled
                             ? (v) =>
                                 controller.setAutoSliceIntervalMinutes(v)
+                            : null,
+                      ),
+                    ),
+                  );
+                }),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("自动解包"),
+                      subtitle: const Text("录制完成/切片后自动将 TS 解包为目标格式"),
+                      value: controller.autoUnpackEnabled.value,
+                      onChanged: (v) =>
+                          controller.setAutoUnpackEnabled(v),
+                    )),
+                Obx(() {
+                  var enabled = controller.autoUnpackEnabled.value;
+                  return Opacity(
+                    opacity: enabled ? 1.0 : 0.4,
+                    child: AbsorbPointer(
+                      absorbing: !enabled,
+                      child: SwitchListTile(
+                        title: const Text("解包后删除 TS 文件"),
+                        subtitle:
+                            const Text("转换完成后自动删除中间 TS 文件"),
+                        value: controller.deleteTsAfterUnpack.value,
+                        onChanged: enabled
+                            ? (v) =>
+                                controller.setDeleteTsAfterUnpack(v)
                             : null,
                       ),
                     ),
