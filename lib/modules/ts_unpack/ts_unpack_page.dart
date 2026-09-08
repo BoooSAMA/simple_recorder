@@ -258,24 +258,29 @@ class TsUnpackPage extends StatelessWidget {
   /// 文件列表（按主播名分组）
   Widget _buildFileList(BuildContext context, TsUnpackController controller) {
     var theme = Theme.of(context);
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 88),
-      itemCount: controller.groups.length,
-      itemBuilder: (context, groupIndex) {
-        var group = controller.groups[groupIndex];
-        var files = group.files;
+    return Obx(() {
+      // 只订阅 groups.length / sortMode, 进度变化不重建列表
+      var groups = controller.groups;
+      return ListView.builder(
+        padding: const EdgeInsets.only(bottom: 88),
+        itemCount: groups.length,
+        // 避免首屏一次性 build 上百个 Row 导致掉帧
+        cacheExtent: 600,
+        itemBuilder: (context, groupIndex) {
+          var group = groups[groupIndex];
+          var files = group.files;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── 分组表头 ──
-            Obx(() {
-              var isExpanded = group.isExpanded.value;
-              return InkWell(
-                onTap: () => controller.toggleGroup(groupIndex),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── 分组表头 ──
+              Obx(() {
+                var isExpanded = group.isExpanded.value;
+                return InkWell(
+                  onTap: () => controller.toggleGroup(groupIndex),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest
@@ -381,20 +386,22 @@ class TsUnpackPage extends StatelessWidget {
               );
             }),
 
-            // ── 文件列表 ──
+            // ── 文件列表 (懒加载, 避免 TS 很多时首屏一次性 build 全部 Row) ──
             Obx(() {
               if (!group.isExpanded.value) return const SizedBox.shrink();
-              return Column(
-                children: [
-                  for (var i = 0; i < files.length; i++)
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: files.length,
+                itemBuilder: (context, i) =>
                     _buildFileRow(context, controller, files[i], i, files.length),
-                ],
               );
             }),
           ],
         );
       },
-    );
+      );
+    });
   }
 
   /// 单个文件行

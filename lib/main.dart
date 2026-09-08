@@ -19,6 +19,7 @@ import 'package:simple_recorder/services/db_service.dart';
 import 'package:simple_recorder/services/global_player_controller.dart';
 import 'package:simple_recorder/services/local_storage_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
+import 'package:simple_recorder/services/unpack_manager.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:simple_recorder/services/live_notification_service.dart';
@@ -48,6 +49,8 @@ void main() async {
   Get.put(RecordingManager());
   // 全局音频播放器（常驻单例，跨页面保持播放）
   Get.put(GlobalPlayerController(), permanent: true);
+  // 解包/合并常驻后台服务 - 独立于页面生命周期，切页不中断
+  Get.put(UnpackManager(), permanent: true);
 
   // 新用户首启：请求通知权限和存储权限
   _requestPermissions();
