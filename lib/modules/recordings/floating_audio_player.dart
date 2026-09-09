@@ -119,15 +119,13 @@ class FloatingAudioPlayer extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 2),
-              // 文件名（可变长度）
+              // 文件名（太长时跑马灯往右滚动）
               Expanded(
-                child: Obx(() => Text(
-                      c.currentName.value,
+                child: Obx(() => _MarqueeText(
+                      text: c.currentName.value,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     )),
               ),
               // 收起键（贴到屏幕左侧小条，音乐不停）
@@ -428,13 +426,11 @@ class FloatingAudioPlayer extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: Obx(() => Text(
-                      c.currentName.value,
+                child: Obx(() => _MarqueeText(
+                      text: c.currentName.value,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     )),
               ),
               Container(
@@ -924,6 +920,93 @@ class CollapsedPlayerBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 文件名跑马灯：内容超出可用宽度时自动往右滚动，播完停留后滚回开头循环
+///
+/// 不溢出时就是普通单行文本。只用 ScrollController + 基础组件，
+/// 无 Material/Overlay 祖先依赖，可安全用在全局悬浮层。
+class _MarqueeText extends StatefulWidget {
+  final String text;
+  final TextStyle? style;
+
+  const _MarqueeText({required this.text, this.style});
+
+  @override
+  State<_MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<_MarqueeText> {
+  final ScrollController _controller = ScrollController();
+  bool _disposed = false;
+  int _generation = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeScroll());
+  }
+
+  @override
+  void didUpdateWidget(_MarqueeText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      // 换歌：旧循环过期退出，回到开头后重新测量启动
+      _generation++;
+      if (_controller.hasClients) _controller.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeScroll());
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _maybeScroll() async {
+    final gen = ++_generation;
+    if (_disposed || !_controller.hasClients) return;
+    // 首帧测量：不溢出直接返回
+    if (_controller.position.maxScrollExtent <= 0) return;
+    while (!_disposed && gen == _generation && _controller.hasClients) {
+      // 开头停留 1s，让用户看清文件名开头
+      await Future.delayed(const Duration(seconds: 1));
+      if (_disposed || gen != _generation || !_controller.hasClients) return;
+      final max = _controller.position.maxScrollExtent;
+      if (max <= 0) return;
+      // 匀速往右滚动（约 40px/s）
+      await _controller.animateTo(
+        max,
+        duration: Duration(
+            milliseconds: (max / 40 * 1000).round().clamp(1000, 8000)),
+        curve: Curves.linear,
+      );
+      if (_disposed || gen != _generation) return;
+      // 末尾停留 2s
+      await Future.delayed(const Duration(seconds: 2));
+      if (_disposed || gen != _generation || !_controller.hasClients) return;
+      // 滚回开头
+      await _controller.animateTo(
+        0,
+        duration: const Duration(milliseconds: 800),
+        curve: Curves.easeOut,
+      );
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      controller: _controller,
+      // 禁止手动滑动，只走自动跑马灯，避免与自动滚动打架
+      physics: const NeverScrollableScrollPhysics(),
+      child: Text(widget.text, style: widget.style, maxLines: 1),
     );
   }
 }
