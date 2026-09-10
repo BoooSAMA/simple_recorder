@@ -5,7 +5,6 @@ import 'dart:isolate';
 // ignore_for_file: curly_braces_in_flow_control_structures
 
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -407,13 +406,16 @@ class UnpackManager extends GetxController {
       await sink.close();
       currentFileIndex.value++;
       currentFileName.value = "${frag.owner} (${frag.files.length} 个片段)";
-      final fragTotal = await _probeTotalSeconds(frag.files.map((f) => f.item.path).toList());
+      // 零 IO 估算总时长 + 源总大小（concat 直拷，大小比例即进度）
+      final fragPaths = frag.files.map((f) => f.item.path).toList();
+      final fragTotal = _estimateSecondsFromNames(frag.files.map((f) => f.item.fileName).toList());
+      final fragBytes = _sourceTotalBytes(fragPaths);
       var result = await UnpackQueue.instance.enqueue(
         () => _runFfmpegConcat(listFile.path, outputPath, (p) {
           var base = (successCount + failCount) / totalCount;
           var weight = frag.files.length / totalCount;
           _emitProgress(base + p * weight);
-        }, totalSeconds: fragTotal),
+        }, totalSeconds: fragTotal, totalBytes: fragBytes),
       );
       if (await listFile.exists()) await listFile.delete();
       if (result) {
@@ -514,13 +516,16 @@ class UnpackManager extends GetxController {
       await sink.close();
       currentFileIndex.value++;
       currentFileName.value = "${group.owner} (${group.files.length} 个片段)";
-      final groupTotal = await _probeTotalSeconds(group.files.map((f) => f.item.path).toList());
+      // 零 IO 估算总时长 + 源总大小
+      final groupPaths = group.files.map((f) => f.item.path).toList();
+      final groupTotal = _estimateSecondsFromNames(group.files.map((f) => f.item.fileName).toList());
+      final groupBytes = _sourceTotalBytes(groupPaths);
       var result = await UnpackQueue.instance.enqueue(
         () => _runFfmpegConcat(listFile.path, outputPath, (p) {
           var base = (successCount + failCount) / totalCount;
           var weight = group.files.length / totalCount;
           _emitProgress(base + p * weight);
-        }, totalSeconds: groupTotal),
+        }, totalSeconds: groupTotal, totalBytes: groupBytes),
       );
       if (await listFile.exists()) await listFile.delete();
       if (result) {
@@ -580,9 +585,16 @@ class UnpackManager extends GetxController {
       }
       await sink.flush();
       await sink.close();
-      final selTotal = await _probeTotalSeconds(files.map((f) => f.path).toList());
+      // 零 IO 估算总时长 + 源总大小
+      final selPaths = files.map((f) => f.path).toList();
+      final selTotal = _estimateSecondsFromNames(files.map((f) => f.fileName).toList());
+      final selBytes = _sourceTotalBytes(selPaths);
+      // 大文件预告：超过 500MB 提醒用户需要较长时间
+      if (selBytes > 500 * 1024 * 1024) {
+        SmartDialog.showToast("文件较大(${(selBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB)，合并需要一些时间");
+      }
       var result = await UnpackQueue.instance.enqueue(
-        () => _runFfmpegConcat(listFile.path, outputPath, (p) => _emitProgress(p), totalSeconds: selTotal),
+        () => _runFfmpegConcat(listFile.path, outputPath, (p) => _emitProgress(p), totalSeconds: selTotal, totalBytes: selBytes),
       );
       if (await listFile.exists()) await listFile.delete();
       if (result) {
@@ -631,7 +643,13 @@ class UnpackManager extends GetxController {
     return "${owner}_${date}_${earliestStart}_$latestEnd";
   }
 
-  Future<bool> _runFfmpegConcat(String listPath, String outputPath, void Function(double) onProgress, {double totalSeconds = 0}) async {
+  /// FFmpeg concat 拼接（-c copy 直拷）
+  ///
+  /// 进度双源（取较快者，emit 单调钳制）：
+  /// 1. 输出文件大小 / 源总大小 —— 直拷输出≈输入之和，这是最准最实时的；
+  /// 2. FFmpeg 日志 `time=` / 总时长 —— 兜底。
+  /// 总时长从文件名时间戳估算（零 IO），大文件不再 FFprobe 预探测。
+  Future<bool> _runFfmpegConcat(String listPath, String outputPath, void Function(double) onProgress, {double totalSeconds = 0, int totalBytes = 0}) async {
     final completer = Completer<bool>();
     var lastProgress = 0.0;
     void emit(double p) {
@@ -640,10 +658,22 @@ class UnpackManager extends GetxController {
       lastProgress = p;
       onProgress(p);
     }
+    // 大小进度监测：200ms 刷一次输出文件大小
+    Timer? sizeTimer;
+    if (totalBytes > 0) {
+      sizeTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (completer.isCompleted) return;
+        try {
+          var out = File(outputPath);
+          if (out.existsSync()) emit(out.lengthSync() / totalBytes);
+        } catch (_) {}
+      });
+    }
     try {
       await FFmpegKit.executeWithArgumentsAsync(
         ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', outputPath],
         (session) async {
+          sizeTimer?.cancel();
           var returnCode = await session.getReturnCode();
           if (ReturnCode.isSuccess(returnCode)) {
             emit(1.0);
@@ -665,21 +695,46 @@ class UnpackManager extends GetxController {
     } catch (e) {
       Log.logPrint("FFmpeg concat 执行失败: $e");
       if (!completer.isCompleted) completer.complete(false);
+    } finally {
+      sizeTimer?.cancel();
     }
     return completer.future;
   }
 
-  Future<double> _probeTotalSeconds(List<String> paths) async {
-    var total = 0.0;
+  /// 源文件总大小（lengthSync 求和，毫秒级，比 FFprobe 探测快得多）
+  int _sourceTotalBytes(List<String> paths) {
+    var total = 0;
     for (var p in paths) {
       try {
-        var session = await FFprobeKit.getMediaInformation(p);
-        var raw = session.getMediaInformation()?.getDuration();
-        var secs = raw != null && raw.isNotEmpty ? double.tryParse(raw) ?? 0 : 0;
-        if (secs > 0) total += secs;
+        total += File(p).lengthSync();
       } catch (_) {}
     }
     return total;
+  }
+
+  /// 从文件名时间戳估算总时长（秒）：最早开始 ~ 最晚结束，零 IO
+  /// 文件名格式 {owner}_{date}_{startTime}_{endTime}，时间 HH-MM
+  double _estimateSecondsFromNames(List<String> fileNames) {
+    DateTime? earliest;
+    DateTime? latest;
+    for (var raw in fileNames) {
+      var name = raw.replaceAll('.ts', '').replaceAll('_interrupted', '').replaceAll('_merged', '');
+      var parts = name.split('_');
+      if (parts.length < 4) continue;
+      try {
+        var dateParts = parts[1].split('-');
+        var sParts = parts[2].split('-');
+        var eParts = parts[3].split('-');
+        if (dateParts.length != 3 || sParts.length != 2 || eParts.length != 2) continue;
+        var start = DateTime(int.parse(dateParts[0]), int.parse(dateParts[1]), int.parse(dateParts[2]), int.parse(sParts[0]), int.parse(sParts[1]));
+        var end = DateTime(int.parse(dateParts[0]), int.parse(dateParts[1]), int.parse(dateParts[2]), int.parse(eParts[0]), int.parse(eParts[1]));
+        if (end.isBefore(start)) end = end.add(const Duration(days: 1)); // 跨天
+        if (earliest == null || start.isBefore(earliest)) earliest = start;
+        if (latest == null || end.isAfter(latest)) latest = end;
+      } catch (_) {}
+    }
+    if (earliest == null || latest == null) return 0;
+    return latest.difference(earliest).inSeconds.toDouble();
   }
 
   int _parseTimeToSeconds(String h, String m, String s) => int.parse(h) * 3600 + int.parse(m) * 60 + int.parse(s);
