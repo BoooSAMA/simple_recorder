@@ -629,18 +629,55 @@ class UnpackManager extends GetxController {
     var earliestStart = "99-99";
     var latestEnd = "00-00";
     var date = "";
+    var parsedAny = false;
     for (var f in files) {
-      var name = f.fileName.replaceAll('.ts', '').replaceAll('_interrupted', '');
-      var parts = name.split('_');
-      if (parts.length >= 4) {
-        date = parts[1];
-        var start = parts[2];
-        var end = parts[3];
-        if (start.compareTo(earliestStart) < 0) earliestStart = start;
-        if (end.compareTo(latestEnd) > 0) latestEnd = end;
+      var t = _parseNameTime(f.fileName);
+      if (t == null) continue;
+      parsedAny = true;
+      // 日期取最早开始那天的，避免跨天合并时日期错位
+      if (t.start.compareTo(earliestStart) < 0) {
+        earliestStart = t.start;
+        date = t.date;
+      }
+      if (t.end.compareTo(latestEnd) > 0) latestEnd = t.end;
+    }
+    if (!parsedAny) {
+      // 兜底：全部解析失败时用最早文件的修改时间，绝不输出 99-99_00-00
+      // (${t}_ 的花括号语义必需，lint 此处误报)
+      try {
+        var dt = File(files.first.path).lastModifiedSync();
+        var d = _twoDigitsDate(dt);
+        var t = _twoDigitsTime(dt);
+        // ignore: unnecessary_brace_in_string_interps
+        return "${owner}_${d}_${t}_${t}";
+      } catch (_) {
+        var now = DateTime.now();
+        var d = _twoDigitsDate(now);
+        var t = _twoDigitsTime(now);
+        // ignore: unnecessary_brace_in_string_interps
+        return "${owner}_${d}_${t}_${t}";
       }
     }
     return "${owner}_${date}_${earliestStart}_$latestEnd";
+  }
+
+  String _twoDigitsDate(DateTime dt) =>
+      "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}";
+
+  String _twoDigitsTime(DateTime dt) =>
+      "${dt.hour.toString().padLeft(2, '0')}-${dt.minute.toString().padLeft(2, '0')}";
+
+  /// 从 TS 文件名解析时间信息（从右往左匹配，owner 含下划线也安全）
+  ///
+  /// 文件名格式 {owner}_{date}_{start}_{end}[_merged][_interrupted].ts，
+  /// 返回 (date, start, end)，如 ("2026-09-05", "22-13", "22-24")；
+  /// 格式不符返回 null。
+  ({String date, String start, String end})? _parseNameTime(String fileName) {
+    var m = RegExp(
+      r'_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_(\d{2}-\d{2})(?:_merged)?(?:_interrupted)?\.ts$',
+    ).firstMatch(fileName);
+    if (m == null) return null;
+    return (date: m.group(1)!, start: m.group(2)!, end: m.group(3)!);
   }
 
   /// FFmpeg concat 拼接（-c copy 直拷）
@@ -718,14 +755,12 @@ class UnpackManager extends GetxController {
     DateTime? earliest;
     DateTime? latest;
     for (var raw in fileNames) {
-      var name = raw.replaceAll('.ts', '').replaceAll('_interrupted', '').replaceAll('_merged', '');
-      var parts = name.split('_');
-      if (parts.length < 4) continue;
+      var t = _parseNameTime(raw);
+      if (t == null) continue;
       try {
-        var dateParts = parts[1].split('-');
-        var sParts = parts[2].split('-');
-        var eParts = parts[3].split('-');
-        if (dateParts.length != 3 || sParts.length != 2 || eParts.length != 2) continue;
+        var dateParts = t.date.split('-');
+        var sParts = t.start.split('-');
+        var eParts = t.end.split('-');
         var start = DateTime(int.parse(dateParts[0]), int.parse(dateParts[1]), int.parse(dateParts[2]), int.parse(sParts[0]), int.parse(sParts[1]));
         var end = DateTime(int.parse(dateParts[0]), int.parse(dateParts[1]), int.parse(dateParts[2]), int.parse(eParts[0]), int.parse(eParts[1]));
         if (end.isBefore(start)) end = end.add(const Duration(days: 1)); // 跨天
@@ -740,14 +775,9 @@ class UnpackManager extends GetxController {
   int _parseTimeToSeconds(String h, String m, String s) => int.parse(h) * 3600 + int.parse(m) * 60 + int.parse(s);
 
   _ParsedFile? _parseFileName(String fileName, UnpackFileItem item) {
-    var name = fileName.replaceAll('.ts', '').replaceAll('_interrupted', '');
-    var parts = name.split('_');
-    if (parts.length < 4) return null;
-    var date = parts[1];
-    var startTime = parts[2];
-    var endTime = parts[3];
-    if (startTime.length != 5 || endTime.length != 5) return null;
-    return _ParsedFile(date: date, startTime: startTime, endTime: endTime, item: item);
+    var t = _parseNameTime(fileName);
+    if (t == null) return null;
+    return _ParsedFile(date: t.date, startTime: t.start, endTime: t.end, item: item);
   }
 
   int _minutesDiff(String time1, String time2) {
