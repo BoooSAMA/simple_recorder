@@ -4,7 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
@@ -93,13 +93,13 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
   void _showRecordedFiles() {
     var saveDir = controller.audioSavePath.value;
     if (saveDir.isEmpty) {
-      SmartDialog.showToast("请先设置音频存储路径");
+      AppNotify.toast("请先设置音频存储路径");
       return;
     }
 
     var dir = Directory(saveDir);
     if (!dir.existsSync()) {
-      SmartDialog.showToast("存储目录不存在");
+      AppNotify.toast("存储目录不存在");
       return;
     }
 
@@ -111,7 +111,7 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
       ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
 
     if (files.isEmpty) {
-      SmartDialog.showToast("暂无录音文件");
+      AppNotify.toast("暂无录音文件");
       return;
     }
 
@@ -200,7 +200,7 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
     }
     if (dir == null) return;
     controller.setAudioSavePath(dir);
-    SmartDialog.showToast("音频保存路径已设置");
+    AppNotify.toast("音频保存路径已设置");
   }
 
   void _manuallyEditPath() {
@@ -226,17 +226,17 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
             onPressed: () async {
               var dir = textController.text.trim();
               if (dir.isEmpty) {
-                SmartDialog.showToast("路径不能为空");
+                AppNotify.toast("路径不能为空");
                 return;
               }
               var dirObj = Directory(dir);
               if (!dirObj.existsSync()) {
-                SmartDialog.showToast("目录不存在，请检查路径");
+                AppNotify.toast("目录不存在，请检查路径");
                 return;
               }
               Get.back();
               controller.setAudioSavePath(dir);
-              SmartDialog.showToast("音频保存路径已设置");
+              AppNotify.toast("音频保存路径已设置");
             },
             child: const Text("保存"),
           ),

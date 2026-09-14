@@ -23,6 +23,15 @@ class AppSettingsController extends GetxController {
   final livePollInterval = 5.obs;
   final autoRecordPinned = false.obs;
 
+  /// 开播通知附带直播间标题
+  final notifyWithTitle = true.obs;
+
+  /// 开播通知附带已开播时长
+  final notifyWithDuration = true.obs;
+
+  /// 弹出消息停留时长（秒，1~10）：控制 Get.snackbar 与 Toast 的显示时间
+  final popupDurationSeconds = 3.obs;
+
   /// 非置顶主播开播通知（后台轮询检测到非 pin 主播开播时推送系统通知）
   final notifyNonPinnedLive = false.obs;
 
@@ -101,6 +110,12 @@ class AppSettingsController extends GetxController {
         .getValue("live_poll_interval", 5);
     autoRecordPinned.value = LocalStorageService.instance
         .getValue("auto_record_pinned", false);
+    notifyWithTitle.value = LocalStorageService.instance
+        .getValue("notify_with_title", true);
+    notifyWithDuration.value = LocalStorageService.instance
+        .getValue("notify_with_duration", true);
+    popupDurationSeconds.value = LocalStorageService.instance
+        .getValue("popup_duration_seconds", 3);
     notifyNonPinnedLive.value = LocalStorageService.instance
         .getValue("notify_non_pinned_live", false);
     backgroundRefreshNonPinned.value = LocalStorageService.instance
@@ -231,6 +246,22 @@ class AppSettingsController extends GetxController {
   void setAutoRecordPinned(bool value) {
     autoRecordPinned.value = value;
     LocalStorageService.instance.setValue("auto_record_pinned", value);
+  }
+
+  void setNotifyWithTitle(bool value) {
+    notifyWithTitle.value = value;
+    LocalStorageService.instance.setValue("notify_with_title", value);
+  }
+
+  void setNotifyWithDuration(bool value) {
+    notifyWithDuration.value = value;
+    LocalStorageService.instance.setValue("notify_with_duration", value);
+  }
+
+  void setPopupDurationSeconds(int seconds) {
+    final clamped = seconds.clamp(1, 10);
+    popupDurationSeconds.value = clamped;
+    LocalStorageService.instance.setValue("popup_duration_seconds", clamped);
   }
 
   void setNotifyNonPinnedLive(bool value) {

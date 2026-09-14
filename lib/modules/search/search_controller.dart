@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/event_bus.dart';
 import 'package:simple_recorder/app/sites.dart';
@@ -77,7 +78,7 @@ class LiveSearchController extends GetxController {
       // 异步拉取主播头像（不阻塞 UI）
       _fetchAvatars(result.items);
     } catch (e) {
-      Get.snackbar("搜索失败", e.toString());
+      AppNotify.snackbar("搜索失败", e.toString());
     } finally {
       isSearching.value = false;
     }
@@ -117,7 +118,7 @@ class LiveSearchController extends GetxController {
   Future<void> followRoom(LiveRoomItem item) async {
     var id = "${selectedSiteId.value}_${item.roomId}";
     if (DBService.instance.getFollowExist(id)) {
-      Get.snackbar("提示", "已收藏该直播间");
+      AppNotify.snackbar("提示", "已收藏该直播间");
       return;
     }
 
@@ -152,6 +153,6 @@ class LiveSearchController extends GetxController {
     // 通知主页刷新收藏列表
     EventBus.instance.emit(Constant.kUpdateFollow, id);
 
-    Get.snackbar("成功", "已收藏「${item.userName}」");
+    AppNotify.snackbar("成功", "已收藏「${item.userName}」");
   }
 }

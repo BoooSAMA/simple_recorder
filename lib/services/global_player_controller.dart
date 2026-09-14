@@ -5,6 +5,7 @@ import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:simple_recorder/app/app_notify.dart';
 
 /// 播放队列中的一首（路径 + 文件名）
 class QueueTrack {
@@ -242,7 +243,7 @@ class GlobalPlayerController extends GetxController {
     final startMs = (total.inMilliseconds * trimStart.value).round();
     final endMs = (total.inMilliseconds * trimEnd.value).round();
     if (endMs - startMs < 1000) {
-      Get.snackbar('提示', '选中片段太短（至少 1 秒）');
+      AppNotify.snackbar('提示', '选中片段太短（至少 1 秒）');
       return;
     }
 
@@ -282,11 +283,11 @@ class GlobalPlayerController extends GetxController {
       if (ReturnCode.isSuccess(rc)) {
         trimSuccess.value = true;
         trimmedFileName.value = outputPath.split('/').last;
-        Get.snackbar('裁剪成功', trimmedFileName.value);
+        AppNotify.snackbar('裁剪成功', trimmedFileName.value);
       } else {
         trimSuccess.value = false;
         trimmedFileName.value = '';
-        Get.snackbar('裁剪失败', '请检查文件是否损坏');
+        AppNotify.snackbar('裁剪失败', '请检查文件是否损坏');
       }
       completer.complete();
     });

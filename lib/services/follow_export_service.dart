@@ -4,8 +4,8 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/event_bus.dart';
@@ -18,7 +18,7 @@ class FollowExportService {
     try {
       final follows = DBService.instance.getFollowList();
       if (follows.isEmpty) {
-        SmartDialog.showToast('暂无关注数据可导出');
+        AppNotify.toast('暂无关注数据可导出');
         return;
       }
 
@@ -50,9 +50,9 @@ class FollowExportService {
         await File(path).writeAsBytes(bytes);
       }
 
-      SmartDialog.showToast('导出成功');
+      AppNotify.toast('导出成功');
     } catch (e) {
-      SmartDialog.showToast('导出失败: $e');
+      AppNotify.toast('导出失败: $e');
     }
   }
 
@@ -67,7 +67,7 @@ class FollowExportService {
 
       final filePath = result.files.single.path;
       if (filePath == null) {
-        SmartDialog.showToast('无法读取文件');
+        AppNotify.toast('无法读取文件');
         return;
       }
 
@@ -76,13 +76,13 @@ class FollowExportService {
       try {
         data = jsonDecode(raw) as Map<String, dynamic>;
       } catch (_) {
-        SmartDialog.showToast('文件格式错误，解析失败');
+        AppNotify.toast('文件格式错误，解析失败');
         return;
       }
 
       if (data['type'] != 'simple_recorder_follow' &&
           data['type'] != 'bililive_follow') {
-        SmartDialog.showToast('不支持的文件格式');
+        AppNotify.toast('不支持的文件格式');
         return;
       }
 
@@ -150,9 +150,9 @@ class FollowExportService {
         }
       }
 
-      SmartDialog.showToast('导入成功，共导入 $importedCount 个关注用户');
+      AppNotify.toast('导入成功，共导入 $importedCount 个关注用户');
     } catch (e) {
-      SmartDialog.showToast('导入失败: $e');
+      AppNotify.toast('导入失败: $e');
     }
   }
 }

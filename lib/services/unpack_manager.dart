@@ -7,9 +7,9 @@ import 'dart:isolate';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
@@ -265,7 +265,7 @@ class UnpackManager extends GetxController {
     await scanDirectory();
     var msg = "已删除 $ok 个 TS 文件";
     if (fail > 0) msg += "，$fail 个失败";
-    SmartDialog.showToast(msg);
+    AppNotify.toast(msg);
   }
 
   // ── 解包/合并 (后台串行, 进度节流) ──
@@ -282,7 +282,7 @@ class UnpackManager extends GetxController {
     var selectedFiles = <UnpackFileItem>[];
     for (var g in groups) for (var f in g.files) if (f.isSelected.value && !f.isUnpacked.value && !f.isRecording) selectedFiles.add(f);
     if (selectedFiles.isEmpty) {
-      SmartDialog.showToast("请选择需要解包的文件");
+      AppNotify.toast("请选择需要解包的文件");
       return;
     }
     isProcessing.value = true;
@@ -322,7 +322,7 @@ class UnpackManager extends GetxController {
       summary += "，$failCount 个失败";
       Log.logPrint("解包失败详情:\n${failDetails.join('\n')}");
     }
-    SmartDialog.showToast(summary);
+    AppNotify.toast(summary);
     await scanDirectory();
   }
 
@@ -372,7 +372,7 @@ class UnpackManager extends GetxController {
     var group = groups[groupIndex];
     var fragments = _detectFragmentsForGroup(group);
     if (fragments.isEmpty) {
-      SmartDialog.showToast("未检测到碎片文件");
+      AppNotify.toast("未检测到碎片文件");
       return;
     }
     var totalCount = fragments.fold<int>(0, (s, g) => s + g.files.length);
@@ -441,7 +441,7 @@ class UnpackManager extends GetxController {
     currentFileName.value = "";
     var summary = "碎片合并完成：$successCount 个文件已合并";
     if (failCount > 0) summary += "，$failCount 个失败";
-    SmartDialog.showToast(summary);
+    AppNotify.toast(summary);
     await scanDirectory();
   }
 
@@ -482,7 +482,7 @@ class UnpackManager extends GetxController {
     var allFragments = <_FragmentGroup>[];
     for (var i = 0; i < groups.length; i++) allFragments.addAll(_detectFragmentsForGroup(groups[i]));
     if (allFragments.isEmpty) {
-      SmartDialog.showToast("未检测到碎片文件");
+      AppNotify.toast("未检测到碎片文件");
       return;
     }
     var totalCount = allFragments.fold<int>(0, (s, g) => s + g.files.length);
@@ -552,13 +552,13 @@ class UnpackManager extends GetxController {
     currentFileName.value = "";
     var summary = "碎片合并完成：$successCount 个文件已合并";
     if (failCount > 0) summary += "，$failCount 个失败";
-    SmartDialog.showToast(summary);
+    AppNotify.toast(summary);
     await scanDirectory();
   }
 
   Future<void> mergeSelected() async {
     if (!canMergeSelected) {
-      SmartDialog.showToast("请选择同一主播的至少 2 个 TS 文件");
+      AppNotify.toast("请选择同一主播的至少 2 个 TS 文件");
       return;
     }
     var files = _mergeableSelected;
@@ -591,7 +591,7 @@ class UnpackManager extends GetxController {
       final selBytes = _sourceTotalBytes(selPaths);
       // 大文件预告：超过 500MB 提醒用户需要较长时间
       if (selBytes > 500 * 1024 * 1024) {
-        SmartDialog.showToast("文件较大(${(selBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB)，合并需要一些时间");
+        AppNotify.toast("文件较大(${(selBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB)，合并需要一些时间");
       }
       var result = await UnpackQueue.instance.enqueue(
         () => _runFfmpegConcat(listFile.path, outputPath, (p) => _emitProgress(p), totalSeconds: selTotal, totalBytes: selBytes),
@@ -608,14 +608,14 @@ class UnpackManager extends GetxController {
             }
           }
         }
-        SmartDialog.showToast("合并完成 → ${outputPath.split('/').last}");
+        AppNotify.toast("合并完成 → ${outputPath.split('/').last}");
         await scanDirectory();
       } else {
-        SmartDialog.showToast("合并失败，请查看日志");
+        AppNotify.toast("合并失败，请查看日志");
       }
     } catch (e) {
       Log.logPrint("合并异常: $e");
-      SmartDialog.showToast("合并异常: $e");
+      AppNotify.toast("合并异常: $e");
     } finally {
       _progressThrottle?.cancel();
       _progressThrottle = null;

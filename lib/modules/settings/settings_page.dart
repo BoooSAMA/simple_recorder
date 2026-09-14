@@ -83,6 +83,21 @@ class SettingsPage extends StatelessWidget {
                           controller.setLiveCheckConcurrency(v),
                     )),
                 const Divider(height: 1, indent: 16),
+                Obx(() => SettingsNumber(
+                      title: "弹出消息停留时长",
+                      value: controller.popupDurationSeconds.value,
+                      min: 1,
+                      max: 10,
+                      step: 1,
+                      unit: " 秒",
+                      displayValue:
+                          "${controller.popupDurationSeconds.value} 秒",
+                      subtitle: "顶部/底部弹出消息与 Toast 的显示时间 (1~10 秒)",
+                      showTextInput: true,
+                      onChanged: (v) =>
+                          controller.setPopupDurationSeconds(v),
+                    )),
+                const Divider(height: 1, indent: 16),
                 Obx(() => SettingsAction(
                       title: "音频输出格式",
                       value: Constant.audioFormatDisplayName(

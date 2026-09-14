@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/event_bus.dart';
@@ -540,7 +541,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (cleanedCount > 0) {
       Log.logPrint("刷新时主动清理 $cleanedCount 个停滞录制会话");
       if (notifyCleanup) {
-        Get.snackbar(
+        AppNotify.snackbar(
           "刷新完成",
           "已清理 $cleanedCount 个停滞录制会话，录制名额已释放",
           snackPosition: SnackPosition.BOTTOM,
@@ -724,7 +725,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   Future<void> getLiveDuration(FollowUser user) async {
     var site = Sites.getSite(user.siteId);
     if (site == null) {
-      Get.snackbar("获取失败", "不支持的平台: ${user.siteId}",
+      AppNotify.snackbar("获取失败", "不支持的平台: ${user.siteId}",
           snackPosition: SnackPosition.BOTTOM);
       return;
     }
@@ -732,7 +733,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     try {
       var detail = await site.liveSite.getRoomDetail(roomId: user.roomId);
       if (!detail.status) {
-        Get.snackbar("未开播", "${user.userName} 当前未在直播",
+        AppNotify.snackbar("未开播", "${user.userName} 当前未在直播",
             snackPosition: SnackPosition.BOTTOM);
         return;
       }
@@ -751,7 +752,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
             int hours = diff ~/ 3600;
             int minutes = (diff % 3600) ~/ 60;
             int seconds = diff % 60;
-            Get.snackbar(
+            AppNotify.snackbar(
               "直播信息 · ${user.userName}",
               "直播间标题: ${detail.title}\n开播时间: $timeStr\n已播时长: $hours小时$minutes分$seconds秒",
               snackPosition: SnackPosition.BOTTOM,
@@ -774,7 +775,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         } catch (_) {}
       }
 
-      Get.snackbar(
+      AppNotify.snackbar(
         "直播信息 · ${user.userName}",
         "直播间标题: ${detail.title}\n该平台暂不支持查询开播信息",
         snackPosition: SnackPosition.BOTTOM,
@@ -790,7 +791,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         ),
       );
     } catch (e) {
-      Get.snackbar("获取失败", e.toString(),
+      AppNotify.snackbar("获取失败", e.toString(),
           snackPosition: SnackPosition.BOTTOM);
     }
   }
@@ -804,7 +805,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
 
     if (user.liveStatus.value == 0) {
-      Get.snackbar(
+      AppNotify.snackbar(
         "录制失败",
         "直播状态未知，请刷新后再试",
         snackPosition: SnackPosition.BOTTOM,
@@ -813,7 +814,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
 
     if (user.liveStatus.value != 2) {
-      Get.snackbar(
+      AppNotify.snackbar(
         "录制失败",
         "主播未开播，无法录制",
         snackPosition: SnackPosition.BOTTOM,
@@ -823,7 +824,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
 
     var site = Sites.getSite(user.siteId);
     if (site == null) {
-      Get.snackbar("录制失败", "不支持的平台: ${user.siteId}");
+      AppNotify.snackbar("录制失败", "不支持的平台: ${user.siteId}");
       return;
     }
 
@@ -838,7 +839,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       var detail = await site.liveSite.getRoomDetail(roomId: user.roomId);
       var qualites = await site.liveSite.getPlayQualites(detail: detail);
       if (qualites.isEmpty) {
-        Get.snackbar("录制失败", "未获取到可用的清晰度选项");
+        AppNotify.snackbar("录制失败", "未获取到可用的清晰度选项");
         return;
       }
       var playUrl = await site.liveSite.getPlayUrls(
@@ -846,7 +847,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         quality: qualites.first,
       );
       if (playUrl.urls.isEmpty) {
-        Get.snackbar("录制失败", "未获取到可用的播放地址");
+        AppNotify.snackbar("录制失败", "未获取到可用的播放地址");
         return;
       }
 
@@ -870,7 +871,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
       await RecordingManager.instance.startRecording(newSession);
     } catch (e) {
       Log.logPrint("开始录制失败: $e");
-      Get.snackbar("录制失败", e.toString());
+      AppNotify.snackbar("录制失败", e.toString());
     }
   }
 
@@ -944,7 +945,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         .toList();
 
     if (pinLives.isEmpty) {
-      Get.snackbar("提示", "没有正在直播的置顶主播",
+      AppNotify.snackbar("提示", "没有正在直播的置顶主播",
           snackPosition: SnackPosition.BOTTOM);
       return;
     }
@@ -1027,7 +1028,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     isLoading.value = false;
     loadProgress.value = 0;
 
-    Get.snackbar("一键录制完成",
+    AppNotify.snackbar("一键录制完成",
         "成功启动: $started  |  跳过/失败: $skipped",
         snackPosition: SnackPosition.BOTTOM);
   }
@@ -1046,7 +1047,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     }
 
     if (pinRecording.isEmpty) {
-      Get.snackbar("提示", "没有正在录制的置顶直播间",
+      AppNotify.snackbar("提示", "没有正在录制的置顶直播间",
           snackPosition: SnackPosition.BOTTOM);
       return;
     }
@@ -1064,7 +1065,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     isLoading.value = false;
     loadProgress.value = 0;
 
-    Get.snackbar("一键结束完成",
+    AppNotify.snackbar("一键结束完成",
         "已停止 $stopped 个录制",
         snackPosition: SnackPosition.BOTTOM);
   }
@@ -1073,7 +1074,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
   void stopRecording(FollowUser user) async {
     var fileInfo = await RecordingManager.instance.stopRecording(user.id);
     if (fileInfo != null) {
-      Get.snackbar(
+      AppNotify.snackbar(
         "录制已停止",
         "文件名: ${fileInfo['fileName']}\n"
         "大小: ${fileInfo['fileSize']}\n"
@@ -1083,7 +1084,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
         maxWidth: Get.width * 0.9,
       );
     } else {
-      Get.snackbar(
+      AppNotify.snackbar(
         "录制已停止",
         "文件已保存",
         snackPosition: SnackPosition.BOTTOM,
@@ -1114,7 +1115,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     if (confirmed != true) return;
 
     await RecordingManager.instance.cancelRecording(user.id);
-    Get.snackbar(
+    AppNotify.snackbar(
       "录制已取消",
       "文件已删除",
       snackPosition: SnackPosition.BOTTOM,

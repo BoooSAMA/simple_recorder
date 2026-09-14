@@ -1,7 +1,9 @@
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/app/log.dart';
+import 'package:simple_recorder/app/sites.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/services/recording_service.dart';
 
@@ -46,15 +48,47 @@ class LiveNotificationService {
   }
 
   /// 通知主播开播（系统通知栏推送）
+  ///
+  /// 按设置决定信息量：默认标题行 `{主播} 开播了！`；
+  /// 开启后正文可附带直播间标题与已开播时长（需调一次房间详情接口，
+  /// 失败时降级为默认通知，不影响推送本身）。
   Future<void> notifyLiveStart(FollowUser user) async {
     if (_notifiedLiveIds.contains(user.id)) return;
     _notifiedLiveIds.add(user.id);
+
+    var body = '点击查看直播间';
+    try {
+      final settings = AppSettingsController.instance;
+      final withTitle = settings.notifyWithTitle.value;
+      final withDuration = settings.notifyWithDuration.value;
+      if (withTitle || withDuration) {
+        final site = Sites.getSite(user.siteId);
+        final detail =
+            await site?.liveSite.getRoomDetail(roomId: user.roomId);
+        if (detail != null && detail.status) {
+          final extras = <String>[];
+          if (withTitle && detail.title.isNotEmpty) {
+            extras.add(detail.title);
+          }
+          final showTime = detail.showTime;
+          if (withDuration && showTime != null && showTime.isNotEmpty) {
+            final elapsed = _formatElapsed(showTime);
+            if (elapsed != null) extras.add('已开播 $elapsed');
+          }
+          if (extras.isNotEmpty) {
+            body = '$body\n${extras.join('\n')}';
+          }
+        }
+      }
+    } catch (e) {
+      Log.logPrint("获取开播详情失败，使用默认通知内容: $e");
+    }
 
     try {
       await _plugin?.show(
         user.id.hashCode.abs(),
         '${user.userName} 开播了！',
-        '点击查看直播间',
+        body,
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'live_notification',
@@ -62,6 +96,8 @@ class LiveNotificationService {
             channelDescription: 'Pin 的主播开播时发送通知',
             importance: Importance.high,
             priority: Priority.high,
+            // 正文多行时展开显示
+            styleInformation: BigTextStyleInformation(''),
           ),
           iOS: DarwinNotificationDetails(
             presentAlert: true,
@@ -72,6 +108,22 @@ class LiveNotificationService {
       );
     } catch (e) {
       Log.logPrint("发送系统通知失败: $e");
+    }
+  }
+
+  /// showTime（秒时间戳）→ 精简已播时长，如 "2小时15分" / "35分钟" / "刚刚"
+  String? _formatElapsed(String showTime) {
+    try {
+      final start = int.parse(showTime);
+      var diff = DateTime.now().millisecondsSinceEpoch ~/ 1000 - start;
+      if (diff < 0) return null;
+      if (diff < 60) return '刚刚';
+      final h = diff ~/ 3600;
+      final m = (diff % 3600) ~/ 60;
+      if (h > 0) return '$h小时$m分';
+      return '$m分钟';
+    } catch (_) {
+      return null;
     }
   }
 

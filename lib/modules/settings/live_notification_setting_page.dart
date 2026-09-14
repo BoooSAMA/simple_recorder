@@ -51,6 +51,22 @@ class LiveNotificationSettingPage extends StatelessWidget {
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SwitchListTile(
+                      title: const Text("通知附带直播间标题"),
+                      subtitle: const Text("开播通知正文显示当前直播标题"),
+                      value: controller.notifyWithTitle.value,
+                      onChanged: (v) =>
+                          controller.setNotifyWithTitle(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
+                      title: const Text("通知附带已开播时长"),
+                      subtitle: const Text("开播通知正文显示已播时长"),
+                      value: controller.notifyWithDuration.value,
+                      onChanged: (v) =>
+                          controller.setNotifyWithDuration(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
                       title: const Text("后台自动刷新非 Pin 主播状态"),
                       subtitle: const Text("后台轮询时同步刷新非置顶主播的直播状态"),
                       value: controller.backgroundRefreshNonPinned.value,

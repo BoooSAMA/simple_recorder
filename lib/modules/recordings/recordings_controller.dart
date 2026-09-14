@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
 import 'package:simple_recorder/services/global_player_controller.dart';
@@ -152,7 +152,7 @@ class RecordingsController extends GetxController {
 
     var msg = "已删除 $successCount 个文件";
     if (failCount > 0) msg += "，$failCount 个失败";
-    SmartDialog.showToast(msg);
+    AppNotify.toast(msg);
   }
 
   void scanDirectory() {

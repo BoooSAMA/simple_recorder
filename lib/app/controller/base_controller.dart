@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:simple_recorder/app/app_notify.dart';
 import 'package:simple_recorder/app/log.dart';
 
 class BaseController extends GetxController {
@@ -18,7 +18,7 @@ class BaseController extends GetxController {
       pageError.value = true;
       errorMsg.value = msg;
     } else {
-      SmartDialog.showToast(msg);
+      AppNotify.toast(msg);
     }
   }
 
