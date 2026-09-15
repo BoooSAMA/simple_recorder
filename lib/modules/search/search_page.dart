@@ -110,7 +110,13 @@ class _SearchPageState extends State<SearchPage> {
                   return false;
                 },
                 child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  // 底部安全区：edgeToEdge 下系统导航条悬浮，留白避免末行被遮
+                  padding: EdgeInsets.fromLTRB(
+                    12,
+                    12,
+                    12,
+                    12 + MediaQuery.of(context).padding.bottom,
+                  ),
                   itemCount: controller.searchResults.length,
                   itemBuilder: (context, index) {
                     var item = controller.searchResults[index];

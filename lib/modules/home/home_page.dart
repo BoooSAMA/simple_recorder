@@ -374,6 +374,12 @@ class HomePage extends StatelessWidget {
             ),
           ],
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          // 底部安全区：edgeToEdge 下系统导航条悬浮，留白避免末行被遮
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: MediaQuery.of(context).padding.bottom,
+            ),
+          ),
         ],
       ),
     );
@@ -432,10 +438,11 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildSimpleList(BuildContext context, HomeController controller) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return RefreshIndicator(
       onRefresh: () => controller.checkAllLiveStatus(notifyCleanup: true),
       child: GridView.builder(
-        padding: const EdgeInsets.all(8),
+        padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + bottomInset),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           mainAxisSpacing: 8,

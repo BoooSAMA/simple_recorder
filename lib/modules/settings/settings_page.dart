@@ -21,7 +21,13 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("设置")),
       body: ListView(
-        padding: const EdgeInsets.all(12),
+        // 底部安全区：edgeToEdge 下系统导航条悬浮，留白避免末行被遮
+        padding: EdgeInsets.fromLTRB(
+          12,
+          12,
+          12,
+          12 + MediaQuery.of(context).padding.bottom,
+        ),
         children: [
           _sectionTitle("录制"),
           SettingsCard(
