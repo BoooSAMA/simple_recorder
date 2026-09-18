@@ -386,15 +386,14 @@ class TsUnpackPage extends StatelessWidget {
               );
             }),
 
-            // ── 文件列表 (懒加载, 避免 TS 很多时首屏一次性 build 全部 Row) ──
+            // ── 文件列表 ──
             Obx(() {
               if (!group.isExpanded.value) return const SizedBox.shrink();
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: files.length,
-                itemBuilder: (context, i) =>
+              return Column(
+                children: [
+                  for (var i = 0; i < files.length; i++)
                     _buildFileRow(context, controller, files[i], i, files.length),
+                ],
               );
             }),
           ],

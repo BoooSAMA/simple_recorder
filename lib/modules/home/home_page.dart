@@ -373,8 +373,7 @@ class HomePage extends StatelessWidget {
               ),
             ),
           ],
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          // 底部安全区：edgeToEdge 下系统导航条悬浮，留白避免末行被遮
+          // 页底安全空白（仅划到底部时可见，避免末行被系统导航条遮挡）
           SliverToBoxAdapter(
             child: SizedBox(
               height: MediaQuery.of(context).padding.bottom,
