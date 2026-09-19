@@ -38,6 +38,8 @@ class TsUnpackController extends GetxController {
   }
 
   void scanDirectory() => _m.scanDirectory();
+  /// 强制重置（刷新按钮）：卡住时取消非录制任务 + 重置队列 + 重扫
+  Future<void> forceReset() => _m.forceReset();
   void setSortMode(int m) => _m.setSortMode(m);
   void selectAll() => _m.selectAll();
   void selectUnpacked() => _m.selectUnpacked();

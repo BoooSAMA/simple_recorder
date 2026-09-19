@@ -32,7 +32,8 @@ class TsUnpackPage extends StatelessWidget {
         title: const Text("TS 解包工具"),
         actions: [
           InkWell(
-            onTap: () => controller.scanDirectory(),
+            // 刷新 = 强制重置：卡住时先取消非录制任务、重置队列，再重扫
+            onTap: () => controller.forceReset(),
             borderRadius: BorderRadius.circular(20),
             child: const SizedBox(
               width: 40,

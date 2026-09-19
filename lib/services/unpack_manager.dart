@@ -6,6 +6,7 @@ import 'dart:isolate';
 
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_https_gpl/session_state.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -327,6 +328,59 @@ class UnpackManager extends GetxController {
   }
 
   void cancelBatch() => isProcessing.value = false;
+
+  /// 强制重置（刷新按钮）：解包/合并卡住不动时的救命键
+  ///
+  /// 依次做四件事：
+  /// 1. 取消所有非录制的 FFmpeg session（卡死的解包/合并/探测），录制中的不受影响；
+  /// 2. 重置 UnpackQueue 串行链，后续新任务不再被旧任务阻塞；
+  /// 3. 重置进度状态，收起悬浮进度条；
+  /// 4. 重扫文件列表（等价于普通刷新）。
+  /// 无卡住时调用等价于普通刷新，无副作用。
+  Future<void> forceReset() async {
+    var killed = 0;
+    try {
+      final sessions = await FFmpegKit.listSessions();
+      final recordingPaths = RecordingManager.instance.activeSessions
+          .map((s) => s.outputPath)
+          .where((p) => p.isNotEmpty)
+          .toList();
+      for (final s in sessions) {
+        try {
+          if (await s.getState() != SessionState.running) continue;
+          final cmd = s.getCommand() ?? '';
+          // 命令行里含录制输出路径 → 正在录制，绝不碰
+          final isRecording =
+              recordingPaths.any((p) => cmd.contains(p));
+          if (isRecording) continue;
+          final id = s.getSessionId();
+          if (id != null) {
+            await FFmpegKit.cancel(id);
+            killed++;
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      Log.logPrint("强制重置列举 session 失败: $e");
+    }
+
+    // 被 cancel 的任务会走 Cancel 回调、for 循环检测到 isProcessing=false 后退出；
+    // 先重置队列再重置状态，避免旧任务 resolve 时干扰新状态
+    UnpackQueue.instance.reset();
+    _progressThrottle?.cancel();
+    _progressThrottle = null;
+    isProcessing.value = false;
+    progress.value = 0.0;
+    currentFileIndex.value = 0;
+    totalFiles.value = 0;
+    currentFileName.value = "";
+
+    await scanDirectory();
+    if (killed > 0) {
+      AppNotify.toast("已强制停止 $killed 个卡住的任务");
+      Log.logPrint("强制重置：取消 $killed 个非录制 session");
+    }
+  }
 
   // ── 合并 (复用已有逻辑, 进度同样节流) ──
 

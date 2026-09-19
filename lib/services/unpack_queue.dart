@@ -14,13 +14,23 @@ class UnpackQueue {
   /// 排队中的任务数（含正在执行的一个）
   int get pendingCount => _pending;
 
+  /// 强制重置：断开当前串行链，后续新任务不再被卡死的旧任务阻塞。
+  /// 用于解包/合并卡住时的刷新按钮。旧任务完成时的计数递减已做防负保护。
+  void reset() {
+    _tail = Future.value();
+    _pending = 0;
+  }
+
   /// 入队一个解包任务，返回该任务完成后的结果（含排队等待时间）
   Future<T> enqueue<T>(Future<T> Function() task) {
     _pending++;
     final result = _tail.then((_) => task());
     // 串行链不因单个任务失败而断开，但对外原样传递结果/异常
     _tail = result.then<void>((_) {}, onError: (_) {});
-    result.whenComplete(() => _pending--);
+    result.whenComplete(() {
+      // reset() 后旧任务完成也可能走到这里，防负
+      if (_pending > 0) _pending--;
+    });
     return result;
   }
 }
