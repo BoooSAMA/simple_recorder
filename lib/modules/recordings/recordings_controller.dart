@@ -165,6 +165,10 @@ class RecordingsController extends GetxController {
 
     hasSavePath.value = true;
     isLoading.value = true;
+    // 记住各分组折叠状态，重建后恢复（删除后不再自动展开）
+    final expandedMap = {
+      for (var g in groups) g.folderName: g.isExpanded.value
+    };
     groups.clear();
 
     var rootDir = Directory(savePath);
@@ -202,6 +206,7 @@ class RecordingsController extends GetxController {
       groups.add(RecordGroup(
         folderName: subDir.path.split('/').last,
         items: items,
+        expanded: expandedMap[subDir.path.split('/').last] ?? true,
       ));
     }
 

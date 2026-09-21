@@ -58,6 +58,11 @@ class UnpackManager extends GetxController {
     }
     hasSavePath.value = true;
 
+    // 记住各分组折叠状态，重建后恢复（删除/合并后不再自动展开）
+    final expandedMap = {
+      for (var g in groups) g.folderName: g.isExpanded.value
+    };
+
     var scanned = await Isolate.run(() => _scanSync(savePath));
     // 在主 Isolate 补上动态 isUnpacked/isRecording 的 Rx 包装
     var format = AppSettingsController.instance.audioFormat.value;
@@ -74,7 +79,11 @@ class UnpackManager extends GetxController {
         );
       }).toList();
       // 组内按修改时间降序(最新在前) - 已在 isolate 内排过, 这里不再重复
-      result.add(UnpackGroup(folderName: g.folderName, files: items));
+      result.add(UnpackGroup(
+        folderName: g.folderName,
+        files: items,
+        expanded: expandedMap[g.folderName] ?? true,
+      ));
     }
     groups.assignAll(result);
     _sortGroups();
