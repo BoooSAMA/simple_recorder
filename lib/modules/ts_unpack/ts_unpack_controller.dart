@@ -14,6 +14,7 @@ class TsUnpackController extends GetxController {
   // ── 代理 Rx 状态 ──
   RxList<UnpackGroup> get groups => _m.groups;
   RxBool get isProcessing => _m.isProcessing;
+  RxString get taskLabel => _m.taskLabel;
   RxDouble get progress => _m.progress;
   RxInt get currentFileIndex => _m.currentFileIndex;
   RxInt get totalFiles => _m.totalFiles;

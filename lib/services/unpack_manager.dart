@@ -32,6 +32,8 @@ class UnpackManager extends GetxController {
 
   // ── 批量进度 (页面悬浮进度条只订阅这几个, 不牵连文件列表) ──
   final isProcessing = false.obs;
+  /// 当前任务类型："解包"/"合并"，用于全局悬浮窗与 pill 文案
+  final taskLabel = "".obs;
   final progress = 0.0.obs;
   final currentFileIndex = 0.obs;
   final totalFiles = 0.obs;
@@ -296,6 +298,7 @@ class UnpackManager extends GetxController {
       return;
     }
     isProcessing.value = true;
+    taskLabel.value = "解包";
     progress.value = 0.0;
     totalFiles.value = selectedFiles.length;
     currentFileIndex.value = 0;
@@ -379,6 +382,7 @@ class UnpackManager extends GetxController {
     _progressThrottle?.cancel();
     _progressThrottle = null;
     isProcessing.value = false;
+    taskLabel.value = "";
     progress.value = 0.0;
     currentFileIndex.value = 0;
     totalFiles.value = 0;
@@ -451,6 +455,7 @@ class UnpackManager extends GetxController {
     );
     if (confirm != true) return;
     isProcessing.value = true;
+    taskLabel.value = "合并";
     progress.value = 0.0;
     totalFiles.value = totalCount;
     currentFileIndex.value = 0;
@@ -561,6 +566,7 @@ class UnpackManager extends GetxController {
     );
     if (confirm != true) return;
     isProcessing.value = true;
+    taskLabel.value = "合并";
     progress.value = 0.0;
     totalFiles.value = totalCount;
     currentFileIndex.value = 0;
@@ -635,6 +641,7 @@ class UnpackManager extends GetxController {
     var nameParts = _parseTimeRange(files, owner);
     var outputPath = "$dir/${nameParts}_merged.ts";
     isProcessing.value = true;
+    taskLabel.value = "合并";
     progress.value = 0.0;
     totalFiles.value = files.length;
     currentFileIndex.value = 0;

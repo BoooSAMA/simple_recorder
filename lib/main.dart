@@ -13,6 +13,7 @@ import 'package:simple_recorder/app/log.dart';
 import 'package:simple_recorder/models/db/follow_user.dart';
 import 'package:simple_recorder/models/db/recording_task.dart';
 import 'package:simple_recorder/modules/recordings/floating_audio_player.dart';
+import 'package:simple_recorder/modules/ts_unpack/task_overlay.dart';
 import 'package:simple_recorder/routes/app_pages.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/db_service.dart';
@@ -236,11 +237,12 @@ class MyApp extends StatelessWidget {
             data: mediaQuery.copyWith(
               textScaler: const TextScaler.linear(1.0),
             ),
-            // 全局悬浮播放器：叠在所有路由页面之上，跳转页面不中断播放
+            // 全局悬浮层：播放器 + 解包/合并任务，叠在所有路由页面之上
             child: Stack(
               children: [
                 child!,
                 const GlobalPlayerOverlay(),
+                const GlobalTaskOverlay(),
               ],
             ),
           );

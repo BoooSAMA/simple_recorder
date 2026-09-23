@@ -668,6 +668,25 @@ class TsUnpackPage extends StatelessWidget {
                   // 进度文字 + 取消
                   Row(
                     children: [
+                      // 任务类型徽标（解包/合并）
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          controller.taskLabel.value.isEmpty
+                              ? "处理"
+                              : controller.taskLabel.value,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text(
                         "${controller.currentFileIndex.value}/${controller.totalFiles.value}",
                         style: theme.textTheme.bodyMedium?.copyWith(
