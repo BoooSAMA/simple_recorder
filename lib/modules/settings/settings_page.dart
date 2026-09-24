@@ -180,6 +180,15 @@ class SettingsPage extends StatelessWidget {
                     )),
                 const Divider(height: 1, indent: 16),
                 Obx(() => SwitchListTile(
+                      title: const Text("合并时显示文件详情"),
+                      subtitle:
+                          const Text("合并确认框列出每组具体文件"),
+                      value: controller.showMergeDetails.value,
+                      onChanged: (v) =>
+                          controller.setShowMergeDetails(v),
+                    )),
+                const Divider(height: 1, indent: 16),
+                Obx(() => SwitchListTile(
                       title: const Text("直播恢复自动续录"),
                       subtitle: const Text("直播结束后自动检测主播是否重新开播并恢复录制"),
                       value: controller.autoReRecordEnabled.value,

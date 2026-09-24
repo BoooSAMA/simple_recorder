@@ -18,6 +18,19 @@ import 'package:simple_recorder/modules/ts_unpack/ts_unpack_service.dart';
 import 'package:simple_recorder/services/recording_manager.dart';
 import 'package:simple_recorder/services/unpack_queue.dart';
 
+/// 碎片组配色板：同组可合并文件用同色标记（按组序号取模循环），
+/// 文件行色点与合并确认框组标题共用，保证对应关系一致。
+const kMergeGroupColors = <Color>[
+  Colors.teal,
+  Colors.orange,
+  Colors.purple,
+  Colors.blue,
+  Colors.pink,
+  Colors.green,
+  Colors.amber,
+  Colors.cyan,
+];
+
 /// 解包/合并的常驻后台服务 - 独立于页面生命周期
 ///
 /// 原先逻辑寄生在 TsUnpackPage 的 Controller 里，切页即销毁导致批量任务中断。
@@ -64,6 +77,8 @@ class UnpackManager extends GetxController {
     final expandedMap = {
       for (var g in groups) g.folderName: g.isExpanded.value
     };
+    // 文件集合变化，碎片检测缓存失效
+    _clearFragCache();
 
     var scanned = await Isolate.run(() => _scanSync(savePath));
     // 在主 Isolate 补上动态 isUnpacked/isRecording 的 Rx 包装
@@ -403,35 +418,98 @@ class UnpackManager extends GetxController {
     return c;
   }
 
-  int getGroupFragmentCount(int groupIndex) {
-    if (groupIndex >= groups.length) return 0;
-    var group = groups[groupIndex];
-    var tsFiles = group.files.where((f) => !f.isRecording && !f.isUnpacked.value).toList();
-    if (tsFiles.length < 2) return 0;
-    var parsed = <_ParsedFile>[];
-    for (var f in tsFiles) {
-      var info = _parseFileName(f.fileName, f);
-      if (info != null) parsed.add(info);
+  /// 碎片检测缓存（key=groupIndex）：同一帧内合并按钮/色点/计数多次查询只算一次
+  final Map<int, List<_FragmentGroup>> _fragCache = {};
+
+  void _clearFragCache() => _fragCache.clear();
+
+  /// 该主播的碎片组列表（带缓存）
+  List<_FragmentGroup> _fragmentsOf(int groupIndex) {
+    if (groupIndex >= groups.length) return const [];
+    return _fragCache.putIfAbsent(
+        groupIndex, () => _detectFragmentsForGroup(groups[groupIndex]));
+  }
+
+  int getGroupFragmentCount(int groupIndex) =>
+      _fragmentsOf(groupIndex).length;
+
+  /// 文件所在碎片组序号（同组同色），不在任何组返回 -1
+  int fragmentGroupIndexOf(int groupIndex, UnpackFileItem file) {
+    final frags = _fragmentsOf(groupIndex);
+    for (var i = 0; i < frags.length; i++) {
+      if (frags[i].files.any((p) => p.item.path == file.path)) return i;
     }
-    parsed.sort((a, b) => a.startTime.compareTo(b.startTime));
-    var byDate = <String, List<_ParsedFile>>{};
-    for (var p in parsed) byDate.putIfAbsent(p.date, () => []).add(p);
-    var count = 0;
-    for (var entry in byDate.entries) {
-      var files = entry.value;
-      if (files.length < 2) continue;
-      var current = <_ParsedFile>[files.first];
-      for (var i = 1; i < files.length; i++) {
-        if (_minutesDiff(current.last.endTime, files[i].startTime) <= 5) {
-          current.add(files[i]);
-        } else {
-          if (current.length >= 2) count++;
-          current = [files[i]];
-        }
-      }
-      if (current.length >= 2) count++;
+    return -1;
+  }
+
+  /// 合并确认框内容：概要 +（开关开启时）每组具体文件列表
+  /// 组标题带同色圆点，与文件行色点对应
+  Widget _mergeConfirmContent(String summary, List<_FragmentGroup> frags) {
+    if (!AppSettingsController.instance.showMergeDetails.value) {
+      return Text(summary);
     }
-    return count;
+    return SizedBox(
+      width: double.maxFinite,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(summary),
+          const SizedBox(height: 8),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < frags.length; i++) ...[
+                    Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: kMergeGroupColors[
+                                frags[i].colorIndex %
+                                    kMergeGroupColors.length],
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            "组${frags[i].colorIndex + 1}（${frags[i].files.length}个）：${frags[i].owner} ${frags[i].date}",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    for (var f in frags[i].files)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(left: 16, top: 2),
+                        child: Text(
+                          "• ${f.item.fileName}",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    if (i < frags.length - 1)
+                      const SizedBox(height: 6),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> mergeGroupFragments(int groupIndex) async {
@@ -446,7 +524,10 @@ class UnpackManager extends GetxController {
     var confirm = await Get.dialog<bool>(
       AlertDialog(
         title: const Text("合并碎片"),
-        content: Text("检测到 ${group.folderName} 的 ${fragments.length} 组碎片，共 $totalCount 个文件\n将自动按时间顺序合并"),
+        content: _mergeConfirmContent(
+          "检测到 ${group.folderName} 的 ${fragments.length} 组碎片，共 $totalCount 个文件\n将自动按时间顺序合并",
+          fragments,
+        ),
         actions: [
           TextButton(onPressed: () => Get.back(result: false), child: const Text("取消")),
           TextButton(onPressed: () => Get.back(result: true), child: const Text("合并")),
@@ -543,6 +624,10 @@ class UnpackManager extends GetxController {
         result.add(_FragmentGroup(owner: group.folderName, date: entry.key, files: g, earliestStart: g.first.startTime, latestEnd: g.last.endTime));
       }
     }
+    // 组序号即在所属主播内的顺序（决定配色，与文件行色点对应）
+    for (var i = 0; i < result.length; i++) {
+      result[i].colorIndex = i;
+    }
     return result;
   }
 
@@ -557,7 +642,10 @@ class UnpackManager extends GetxController {
     var confirm = await Get.dialog<bool>(
       AlertDialog(
         title: const Text("一键合并碎片"),
-        content: Text("检测到 ${allFragments.length} 组碎片，共 $totalCount 个文件\n将自动按时间顺序合并"),
+        content: _mergeConfirmContent(
+          "检测到 ${allFragments.length} 组碎片，共 $totalCount 个文件\n将自动按时间顺序合并",
+          allFragments,
+        ),
         actions: [
           TextButton(onPressed: () => Get.back(result: false), child: const Text("取消")),
           TextButton(onPressed: () => Get.back(result: true), child: const Text("合并")),
@@ -921,5 +1009,7 @@ class _FragmentGroup {
   final List<_ParsedFile> files;
   final String earliestStart;
   final String latestEnd;
+  /// 在所属主播内的组序号（决定配色，与文件行色点对应）
+  int colorIndex = 0;
   _FragmentGroup({required this.owner, required this.date, required this.files, required this.earliestStart, required this.latestEnd});
 }

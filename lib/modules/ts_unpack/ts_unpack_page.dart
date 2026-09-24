@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import 'package:simple_recorder/modules/ts_unpack/ts_unpack_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/global_player_controller.dart';
+import 'package:simple_recorder/services/unpack_manager.dart'
+    show kMergeGroupColors;
 
 class TsUnpackPage extends StatelessWidget {
   const TsUnpackPage({super.key});
@@ -393,7 +395,7 @@ class TsUnpackPage extends StatelessWidget {
               return Column(
                 children: [
                   for (var i = 0; i < files.length; i++)
-                    _buildFileRow(context, controller, files[i], i, files.length),
+                    _buildFileRow(context, controller, files[i], i, files.length, groupIndex),
                 ],
               );
             }),
@@ -411,6 +413,7 @@ class TsUnpackPage extends StatelessWidget {
     FileItem file,
     int index,
     int total,
+    int groupIndex,
   ) {
     var theme = Theme.of(context);
 
@@ -518,6 +521,22 @@ class TsUnpackPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
+                        // 碎片组色点：同组可合并文件同色
+                        Obx(() {
+                          final gi = controller.fragmentGroupIndexOf(
+                              groupIndex, file);
+                          if (gi < 0) return const SizedBox.shrink();
+                          return Container(
+                            width: 10,
+                            height: 10,
+                            margin: const EdgeInsets.only(right: 6),
+                            decoration: BoxDecoration(
+                              color: kMergeGroupColors[
+                                  gi % kMergeGroupColors.length],
+                              shape: BoxShape.circle,
+                            ),
+                          );
+                        }),
                         if (file.isInterrupted)
                           Container(
                             padding: const EdgeInsets.symmetric(

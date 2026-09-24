@@ -30,6 +30,8 @@ class TsUnpackController extends GetxController {
 
   int getMergeOrderIndex(UnpackFileItem file) => _m.getMergeOrderIndex(file);
   int getGroupFragmentCount(int i) => _m.getGroupFragmentCount(i);
+  int fragmentGroupIndexOf(int groupIndex, UnpackFileItem file) =>
+      _m.fragmentGroupIndexOf(groupIndex, file);
 
   @override
   void onInit() {
