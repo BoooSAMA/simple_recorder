@@ -105,4 +105,26 @@ class Constant {
   /// 所有音频文件扩展名列表（用于文件过滤）
   static List<String> get kAllAudioExtensions =>
       kSupportedAudioFormats.map(audioFormatExtension).toList();
+
+  /// 从文件名解析 `日期 + 开始时间` 键（如 "2026-09-05 22-13"），供
+  /// “按文件名日期排序”比较。文件名格式 {owner}_{date}_{start}_{end}[后缀].ext，
+  /// 贪婪匹配最后一个日期段，owner 含下划线也安全；格式不符返回 ""。
+  static String parseNameDateKey(String fileName) {
+    final m =
+        RegExp(r'.*_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_').firstMatch(fileName);
+    if (m == null) return "";
+    return "${m.group(1)} ${m.group(2)}";
+  }
+
+  /// 按文件名日期比较（零填充固定格式可直接字符串比较），解析失败的沉底。
+  /// [ascending] true=升序（旧→新），false=降序（新→旧）。
+  static int compareNameDate(String a, String b, bool ascending) {
+    final ka = parseNameDateKey(a);
+    final kb = parseNameDateKey(b);
+    if (ka.isEmpty && kb.isEmpty) return 0;
+    if (ka.isEmpty) return 1;
+    if (kb.isEmpty) return -1;
+    final c = ka.compareTo(kb);
+    return ascending ? c : -c;
+  }
 }

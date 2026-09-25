@@ -155,7 +155,7 @@ class TsUnpackPage extends StatelessWidget {
   Future<void> _showSortMenu(BuildContext context,
       TsUnpackController controller, Offset position) async {
     var theme = Theme.of(context);
-    const labels = ['日期降序（最新在前）', '日期升序（最旧在前）', '主播名'];
+    const labels = ['创建时间降序（最新在前）', '创建时间升序（最旧在前）', '主播名', '文件名日期降序（最新在前）', '文件名日期升序（最旧在前）'];
     final value = await showMenu<int>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -191,11 +191,15 @@ class TsUnpackPage extends StatelessWidget {
   String _sortModeLabel(int mode) {
     switch (mode) {
       case 1:
-        return "日期升序";
+        return "创建时间升序";
       case 2:
         return "主播名";
+      case 3:
+        return "文件名日期降序";
+      case 4:
+        return "文件名日期升序";
       default:
-        return "日期降序";
+        return "创建时间降序";
     }
   }
 

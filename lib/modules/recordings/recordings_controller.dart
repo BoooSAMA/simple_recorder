@@ -278,17 +278,26 @@ class RecordingsController extends GetxController {
   }
 
   /// 按当前排序模式重排所有分组内的文件列表
+  /// 0=创建时间降序 1=创建时间升序 2=主播名 3=文件名日期降序 4=文件名日期升序
   void reSort() {
     for (var group in groups) {
       switch (sortMode.value) {
-        case 1: // 日期升序（最旧在前）
+        case 1: // 创建时间升序（最旧在前，文件 mtime）
           group.items.sort(
               (a, b) => _mtime(a.path).compareTo(_mtime(b.path)));
           break;
         case 2: // 主播名
           group.items.sort((a, b) => a.fileName.compareTo(b.fileName));
           break;
-        default: // 日期降序（最新在前）
+        case 3: // 文件名日期降序（新→旧，从文件名解析）
+          group.items.sort(
+              (a, b) => Constant.compareNameDate(a.fileName, b.fileName, false));
+          break;
+        case 4: // 文件名日期升序（旧→新，从文件名解析）
+          group.items.sort(
+              (a, b) => Constant.compareNameDate(a.fileName, b.fileName, true));
+          break;
+        default: // 创建时间降序（最新在前，文件 mtime）
           group.items.sort(
               (a, b) => _mtime(b.path).compareTo(_mtime(a.path)));
       }

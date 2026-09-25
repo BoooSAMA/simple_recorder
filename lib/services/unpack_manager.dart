@@ -140,20 +140,54 @@ class UnpackManager extends GetxController {
     return out;
   }
 
+  /// 排序模式：0=创建时间降序 1=创建时间升序 2=主播名
+  /// 3=文件名日期降序 4=文件名日期升序
   void _sortGroups() {
     var list = groups.toList();
     switch (sortMode.value) {
-      case 0:
+      case 0: // 创建时间降序（组内最新 mtime 在前）
         list.sort((a, b) => _latestMs(b).compareTo(_latestMs(a)));
         break;
-      case 1:
+      case 1: // 创建时间升序
         list.sort((a, b) => _latestMs(a).compareTo(_latestMs(b)));
         break;
-      case 2:
+      case 2: // 主播名
         list.sort((a, b) => a.folderName.compareTo(b.folderName));
+        break;
+      case 3: // 文件名日期降序（组内最大文件名日期在前）
+        list.sort((a, b) {
+          final ka = _groupNameKey(a);
+          final kb = _groupNameKey(b);
+          if (ka.isEmpty && kb.isEmpty) return 0;
+          if (ka.isEmpty) return 1;
+          if (kb.isEmpty) return -1;
+          return kb.compareTo(ka);
+        });
+        break;
+      case 4: // 文件名日期升序
+        list.sort((a, b) {
+          final ka = _groupNameKey(a);
+          final kb = _groupNameKey(b);
+          if (ka.isEmpty && kb.isEmpty) return 0;
+          if (ka.isEmpty) return 1;
+          if (kb.isEmpty) return -1;
+          return ka.compareTo(kb);
+        });
         break;
     }
     groups.assignAll(list);
+  }
+
+  /// 组内最大的文件名日期键（解析失败的组沉底）
+  String _groupNameKey(UnpackGroup g) {
+    var best = "";
+    for (var f in g.files) {
+      final k = Constant.parseNameDateKey(f.fileName);
+      if (k.isNotEmpty && (best.isEmpty || k.compareTo(best) > 0)) {
+        best = k;
+      }
+    }
+    return best;
   }
 
   int _latestMs(UnpackGroup g) {
