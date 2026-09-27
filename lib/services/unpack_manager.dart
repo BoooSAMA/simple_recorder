@@ -51,10 +51,44 @@ class UnpackManager extends GetxController {
   final currentFileIndex = 0.obs;
   final totalFiles = 0.obs;
   final currentFileName = "".obs;
+  /// 当前 FFmpeg 短命令（如 "ffmpeg -i a.ts → b.m4a"），悬浮窗展示用
+  final ffmpegCommand = "".obs;
+  /// FFmpeg 内部实时状态（如 "time 00:01:23 · speed 2.5x"），悬浮窗展示用
+  final ffmpegStatus = "".obs;
 
   // 进度节流
   Timer? _progressThrottle;
   double _pendingProgress = 0;
+  // 状态行节流（文本 200ms 一刷即可）
+  Timer? _statusThrottle;
+  String _pendingStatus = "";
+
+  /// 推送 FFmpeg 内部状态行（节流，避免日志高频打爆 UI 重建）
+  void emitStatus(String s) {
+    _pendingStatus = s;
+    _statusThrottle ??= Timer(const Duration(milliseconds: 200), () {
+      ffmpegStatus.value = _pendingStatus;
+      _statusThrottle = null;
+    });
+  }
+
+  /// 从 FFmpeg 进度日志行提取 "time .. · speed .."，非进度行返回 null
+  static String? parseFfmpegStatus(String msg) {
+    if (!msg.contains('time=')) return null;
+    final time =
+        RegExp(r'time=(\d{2}:\d{2}:\d{2})\.\d{2}').firstMatch(msg);
+    final speed = RegExp(r'speed=\s*([\d.]+x)').firstMatch(msg);
+    if (time == null && speed == null) return null;
+    return 'time ${time?.group(1) ?? "--:--:--"} · speed ${speed?.group(1) ?? "-"}';
+  }
+
+  /// 清空命令与状态行（任务结束/取消/重置时调用）
+  void _clearFfmpegInfo() {
+    _statusThrottle?.cancel();
+    _statusThrottle = null;
+    ffmpegCommand.value = "";
+    ffmpegStatus.value = "";
+  }
 
   @override
   void onInit() {
@@ -352,6 +386,7 @@ class UnpackManager extends GetxController {
     totalFiles.value = selectedFiles.length;
     currentFileIndex.value = 0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
     var successCount = 0, failCount = 0;
     var failDetails = <String>[];
     for (var i = 0; i < selectedFiles.length; i++) {
@@ -360,10 +395,22 @@ class UnpackManager extends GetxController {
       currentFileIndex.value = i + 1;
       currentFileName.value = file.fileName;
       var targetFormat = AppSettingsController.instance.audioFormat.value;
+      // 短命令 + 清上一文件的状态行
+      final outName = file.fileName.replaceAll(
+          '.ts', Constant.audioFormatExtension(targetFormat));
+      ffmpegCommand.value = "ffmpeg -i ${file.fileName} → $outName";
+      ffmpegStatus.value = "";
       var result = await UnpackQueue.instance.enqueue(
-        () => TsUnpackService.unpack(file.path, targetFormat: targetFormat, onProgress: (p) {
-          _emitProgress(i / selectedFiles.length + p / selectedFiles.length);
-        }),
+        () => TsUnpackService.unpack(file.path,
+            targetFormat: targetFormat,
+            onProgress: (p) {
+              _emitProgress(
+                  i / selectedFiles.length + p / selectedFiles.length);
+            },
+            onLog: (msg) {
+              final st = parseFfmpegStatus(msg);
+              if (st != null) emitStatus(st);
+            }),
       );
       if (result.success) {
         successCount++;
@@ -379,6 +426,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = false;
     progress.value = 1.0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
     var summary = "解包完成：$successCount 个成功";
     if (failCount > 0) {
       summary += "，$failCount 个失败";
@@ -436,6 +484,7 @@ class UnpackManager extends GetxController {
     currentFileIndex.value = 0;
     totalFiles.value = 0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
 
     await scanDirectory();
     if (killed > 0) {
@@ -575,10 +624,12 @@ class UnpackManager extends GetxController {
     totalFiles.value = totalCount;
     currentFileIndex.value = 0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
     var successCount = 0, failCount = 0;
     for (var frag in fragments) {
       var dir = Directory(frag.files.first.item.path).parent.path;
       var outputPath = "$dir/${frag.owner}_${frag.date}_${frag.earliestStart}_${frag.latestEnd}_merged.ts";
+      ffmpegCommand.value = "ffmpeg -f concat ×${frag.files.length} → ${outputPath.split('/').last}";
       var listFile = File("$dir/_concat_list.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
       for (var f in frag.files) {
@@ -589,6 +640,7 @@ class UnpackManager extends GetxController {
       await sink.close();
       currentFileIndex.value++;
       currentFileName.value = "${frag.owner} (${frag.files.length} 个片段)";
+      ffmpegStatus.value = "";
       // 零 IO 估算总时长 + 源总大小（concat 直拷，大小比例即进度）
       final fragPaths = frag.files.map((f) => f.item.path).toList();
       final fragTotal = _estimateSecondsFromNames(frag.files.map((f) => f.item.fileName).toList());
@@ -622,6 +674,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = false;
     progress.value = 1.0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
     var summary = "碎片合并完成：$successCount 个文件已合并";
     if (failCount > 0) summary += "，$failCount 个失败";
     AppNotify.toast(summary);
@@ -693,10 +746,12 @@ class UnpackManager extends GetxController {
     totalFiles.value = totalCount;
     currentFileIndex.value = 0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
     var successCount = 0, failCount = 0;
     for (var group in allFragments) {
       var dir = Directory(group.files.first.item.path).parent.path;
       var outputPath = "$dir/${group.owner}_${group.date}_${group.earliestStart}_${group.latestEnd}_merged.ts";
+      ffmpegCommand.value = "ffmpeg -f concat ×${group.files.length} → ${outputPath.split('/').last}";
       var listFile = File("$dir/_concat_list.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
       for (var f in group.files) {
@@ -707,6 +762,7 @@ class UnpackManager extends GetxController {
       await sink.close();
       currentFileIndex.value++;
       currentFileName.value = "${group.owner} (${group.files.length} 个片段)";
+      ffmpegStatus.value = "";
       // 零 IO 估算总时长 + 源总大小
       final groupPaths = group.files.map((f) => f.item.path).toList();
       final groupTotal = _estimateSecondsFromNames(group.files.map((f) => f.item.fileName).toList());
@@ -741,6 +797,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = false;
     progress.value = 1.0;
     currentFileName.value = "";
+    _clearFfmpegInfo();
     var summary = "碎片合并完成：$successCount 个文件已合并";
     if (failCount > 0) summary += "，$failCount 个失败";
     AppNotify.toast(summary);
@@ -762,12 +819,14 @@ class UnpackManager extends GetxController {
     var dir = Directory(files.first.path).parent.path;
     var nameParts = _parseTimeRange(files, owner);
     var outputPath = "$dir/${nameParts}_merged.ts";
+    ffmpegCommand.value = "ffmpeg -f concat ×${files.length} → ${outputPath.split('/').last}";
     isProcessing.value = true;
     taskLabel.value = "合并";
     progress.value = 0.0;
     totalFiles.value = files.length;
     currentFileIndex.value = 0;
     currentFileName.value = "合并中...";
+    ffmpegStatus.value = "";
     try {
       var listFile = File("$dir/_concat_list.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
@@ -814,6 +873,7 @@ class UnpackManager extends GetxController {
       isProcessing.value = false;
       progress.value = 1.0;
       currentFileName.value = "";
+      _clearFfmpegInfo();
     }
   }
 
@@ -912,8 +972,11 @@ class UnpackManager extends GetxController {
           }
         },
         (log) {
-          if (totalSeconds <= 0) return;
           var msg = log.getMessage();
+          // 内部状态行透传到悬浮窗
+          final st = parseFfmpegStatus(msg);
+          if (st != null) emitStatus(st);
+          if (totalSeconds <= 0) return;
           var m = RegExp(r'time=(\d{2}):(\d{2}):(\d{2})\.\d{2}').firstMatch(msg);
           if (m != null) {
             var current = _parseTimeToSeconds(m.group(1)!, m.group(2)!, m.group(3)!);

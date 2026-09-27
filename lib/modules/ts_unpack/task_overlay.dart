@@ -149,6 +149,37 @@ class _TaskBar extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    // 第四行：FFmpeg 短命令（等宽小字）
+                    if (m.ffmpegCommand.value.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(
+                          "\$ ${m.ffmpegCommand.value}",
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            fontFamilyFallback: ['Courier'],
+                            color: Colors.teal,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    // 第五行：FFmpeg 内部实时状态（200ms 节流，无则隐藏）
+                    if (m.ffmpegStatus.value.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          "▸ ${m.ffmpegStatus.value}",
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurface
+                                .withAlpha(110),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                   ],
                 );
               }),

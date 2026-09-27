@@ -31,6 +31,7 @@ class TsUnpackService {
     String tsPath, {
     String targetFormat = 'm4a',
     void Function(double)? onProgress,
+    void Function(String)? onLog,
   }) async {
     var ext = Constant.audioFormatExtension(targetFormat);
     var outputPath = tsPath.replaceAll('.ts', ext);
@@ -131,6 +132,8 @@ class TsUnpackService {
       },
       (log) {
         var msg = log.getMessage();
+        // 原始日志行透传（调用方提取内部状态展示）
+        onLog?.call(msg);
         if (onProgress == null) return;
 
         // 尝试从 FFmpeg 日志解析总时长（兜底）
