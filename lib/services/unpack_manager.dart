@@ -387,7 +387,7 @@ class UnpackManager extends GetxController {
     currentFileIndex.value = 0;
     currentFileName.value = "";
     _clearFfmpegInfo();
-    var successCount = 0, failCount = 0;
+    var successCount = 0, failCount = 0, tsLeftCount = 0;
     var failDetails = <String>[];
     for (var i = 0; i < selectedFiles.length; i++) {
       if (!isProcessing.value) break;
@@ -416,6 +416,7 @@ class UnpackManager extends GetxController {
         successCount++;
         file.isUnpacked.value = true;
         file.isSelected.value = false;
+        if (!result.tsDeleted) tsLeftCount++;
       } else {
         failCount++;
         failDetails.add("${file.fileName}: ${result.error ?? '失败'}");
@@ -428,6 +429,10 @@ class UnpackManager extends GetxController {
     currentFileName.value = "";
     _clearFfmpegInfo();
     var summary = "解包完成：$successCount 个成功";
+    if (tsLeftCount > 0) {
+      summary += "（$tsLeftCount 个 TS 未删除，可手动删除）";
+      Log.logPrint("有 $tsLeftCount 个源 TS 文件残留未删除");
+    }
     if (failCount > 0) {
       summary += "，$failCount 个失败";
       Log.logPrint("解包失败详情:\n${failDetails.join('\n')}");

@@ -424,7 +424,9 @@ class TsUnpackPage extends StatelessWidget {
     return Obx(() {
       var isUnpacked = file.isUnpacked.value;
       var isSelected = file.isSelected.value;
-      var canSelect = !isUnpacked && !file.isRecording;
+      // 录制中的不可选；已解包的也可勾选（用于批量删除），
+      // 点解包时 startBatchUnpack 会过滤已解包，不会重复解包
+      var canSelect = !file.isRecording;
 
       return InkWell(
         onTap: canSelect

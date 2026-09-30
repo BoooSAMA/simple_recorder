@@ -13,11 +13,14 @@ class UnpackResult {
   final bool success;
   final String path;
   final String? error;
+  /// 源 TS 是否已删除（开关关闭视为主动保留，不算失败）
+  final bool tsDeleted;
 
   UnpackResult({
     required this.success,
     required this.path,
     this.error,
+    this.tsDeleted = true,
   });
 }
 
@@ -99,20 +102,15 @@ class TsUnpackService {
           Log.logPrint("解包成功: $outputPath");
           emitProgress(1.0);
 
-          // 按设置决定是否删除源 TS 文件
+          // 按设置决定是否删除源 TS 文件（带重试：FFmpeg 刚结束时
+          // 文件句柄可能未释放，一次失败就放弃会导致 TS 残留）
+          var tsDeleted = true;
           if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
-            try {
-              var tsFile = File(tsPath);
-              if (await tsFile.exists()) {
-                await tsFile.delete();
-                Log.logPrint("已删除源 TS 文件: $tsPath");
-              }
-            } catch (e) {
-              Log.logPrint("删除源 TS 文件失败: $e");
-            }
+            tsDeleted = await _deleteTsWithRetry(tsPath);
           }
 
-          completer.complete(UnpackResult(success: true, path: tsPath));
+          completer.complete(UnpackResult(
+              success: true, path: tsPath, tsDeleted: tsDeleted));
         } else if (ReturnCode.isCancel(returnCode)) {
           completer.complete(UnpackResult(
             success: false,
@@ -169,6 +167,25 @@ class TsUnpackService {
     );
 
     return completer.future;
+  }
+
+  /// 删除源 TS（最多 3 次，间隔 500ms），返回是否已删除
+  static Future<bool> _deleteTsWithRetry(String tsPath) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        var tsFile = File(tsPath);
+        if (!await tsFile.exists()) return true; // 已不在，视为成功
+        await tsFile.delete();
+        Log.logPrint("已删除源 TS 文件: $tsPath");
+        return true;
+      } catch (e) {
+        Log.logPrint("删除源 TS 文件失败(第${attempt + 1}次): $e");
+        if (attempt < 2) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+    }
+    return false;
   }
 
   /// 使用 FFprobe 获取媒体文件时长（秒）
