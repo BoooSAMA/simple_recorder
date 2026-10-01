@@ -53,8 +53,10 @@ class UnpackManager extends GetxController {
   final currentFileName = "".obs;
   /// 当前 FFmpeg 短命令（如 "ffmpeg -i a.ts → b.m4a"），悬浮窗展示用
   final ffmpegCommand = "".obs;
-  /// FFmpeg 内部实时状态（如 "time 00:01:23 · speed 2.5x"），悬浮窗展示用
+  /// FFmpeg 内部实时状态（如 "time 00:01:23 · speed 2.5x · frame 1234"）
   final ffmpegStatus = "".obs;
+  /// 写入量（如 "12.3MB / 45.6MB"），悬浮窗展示用
+  final ffmpegSize = "".obs;
 
   // 进度节流
   Timer? _progressThrottle;
@@ -72,14 +74,32 @@ class UnpackManager extends GetxController {
     });
   }
 
-  /// 从 FFmpeg 进度日志行提取 "time .. · speed .."，非进度行返回 null
+  /// 从 FFmpeg 进度日志行提取 "time .. · speed .. · frame .."，非进度行返回 null
   static String? parseFfmpegStatus(String msg) {
     if (!msg.contains('time=')) return null;
     final time =
         RegExp(r'time=(\d{2}:\d{2}:\d{2})\.\d{2}').firstMatch(msg);
     final speed = RegExp(r'speed=\s*([\d.]+x)').firstMatch(msg);
-    if (time == null && speed == null) return null;
-    return 'time ${time?.group(1) ?? "--:--:--"} · speed ${speed?.group(1) ?? "-"}';
+    final frame = RegExp(r'frame=\s*(\d+)').firstMatch(msg);
+    if (time == null && speed == null && frame == null) return null;
+    final parts = <String>[
+      'time ${time?.group(1) ?? "--:--:--"}',
+      'speed ${speed?.group(1) ?? "-"}',
+    ];
+    if (frame != null) parts.add('frame ${frame.group(1)}');
+    return parts.join(' · ');
+  }
+
+  /// 字节数格式化（12.3MB / 1.2GB / 456KB）
+  static String formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB";
+    }
+    if (bytes >= 1024 * 1024) {
+      return "${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB";
+    }
+    if (bytes >= 1024) return "${(bytes / 1024).toStringAsFixed(0)}KB";
+    return "$bytes B";
   }
 
   /// 清空命令与状态行（任务结束/取消/重置时调用）
@@ -88,6 +108,7 @@ class UnpackManager extends GetxController {
     _statusThrottle = null;
     ffmpegCommand.value = "";
     ffmpegStatus.value = "";
+    ffmpegSize.value = "";
   }
 
   @override
@@ -400,6 +421,7 @@ class UnpackManager extends GetxController {
           '.ts', Constant.audioFormatExtension(targetFormat));
       ffmpegCommand.value = "ffmpeg -i ${file.fileName} → $outName";
       ffmpegStatus.value = "";
+      ffmpegSize.value = "";
       var result = await UnpackQueue.instance.enqueue(
         () => TsUnpackService.unpack(file.path,
             targetFormat: targetFormat,
@@ -410,6 +432,10 @@ class UnpackManager extends GetxController {
             onLog: (msg) {
               final st = parseFfmpegStatus(msg);
               if (st != null) emitStatus(st);
+            },
+            onSize: (written, total) {
+              ffmpegSize.value =
+                  "${formatBytes(written)} / ${formatBytes(total)}";
             }),
       );
       if (result.success) {
@@ -646,6 +672,7 @@ class UnpackManager extends GetxController {
       currentFileIndex.value++;
       currentFileName.value = "${frag.owner} (${frag.files.length} 个片段)";
       ffmpegStatus.value = "";
+      ffmpegSize.value = "";
       // 零 IO 估算总时长 + 源总大小（concat 直拷，大小比例即进度）
       final fragPaths = frag.files.map((f) => f.item.path).toList();
       final fragTotal = _estimateSecondsFromNames(frag.files.map((f) => f.item.fileName).toList());
@@ -768,6 +795,7 @@ class UnpackManager extends GetxController {
       currentFileIndex.value++;
       currentFileName.value = "${group.owner} (${group.files.length} 个片段)";
       ffmpegStatus.value = "";
+      ffmpegSize.value = "";
       // 零 IO 估算总时长 + 源总大小
       final groupPaths = group.files.map((f) => f.item.path).toList();
       final groupTotal = _estimateSecondsFromNames(group.files.map((f) => f.item.fileName).toList());
@@ -832,6 +860,7 @@ class UnpackManager extends GetxController {
     currentFileIndex.value = 0;
     currentFileName.value = "合并中...";
     ffmpegStatus.value = "";
+    ffmpegSize.value = "";
     try {
       var listFile = File("$dir/_concat_list.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
@@ -952,14 +981,19 @@ class UnpackManager extends GetxController {
       lastProgress = p;
       onProgress(p);
     }
-    // 大小进度监测：200ms 刷一次输出文件大小
+    // 大小进度监测：200ms 刷一次输出文件大小（进度 + 写入量展示）
     Timer? sizeTimer;
     if (totalBytes > 0) {
       sizeTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
         if (completer.isCompleted) return;
         try {
           var out = File(outputPath);
-          if (out.existsSync()) emit(out.lengthSync() / totalBytes);
+          if (out.existsSync()) {
+            final written = out.lengthSync();
+            emit(written / totalBytes);
+            ffmpegSize.value =
+                "${formatBytes(written)} / ${formatBytes(totalBytes)}";
+          }
         } catch (_) {}
       });
     }

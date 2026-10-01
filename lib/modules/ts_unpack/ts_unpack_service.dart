@@ -35,6 +35,7 @@ class TsUnpackService {
     String targetFormat = 'm4a',
     void Function(double)? onProgress,
     void Function(String)? onLog,
+    void Function(int writtenBytes, int inputBytes)? onSize,
   }) async {
     var ext = Constant.audioFormatExtension(targetFormat);
     var outputPath = tsPath.replaceAll('.ts', ext);
@@ -74,7 +75,7 @@ class TsUnpackService {
 
     // 文件尺寸进度监测：仅当无法从 FFmpeg 日志获取精确时长时作为后备
     Timer? progressTimer;
-    if (onProgress != null) {
+    if (onProgress != null || onSize != null) {
       progressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
         // totalDuration > 0 说明已有精确进度源（FFprobe 或日志 Duration 行），
         // 此时文件尺寸估算不再推值，避免与日志 time= 解析冲突导致进度跳动
@@ -82,6 +83,8 @@ class TsUnpackService {
           var outputFile = File(outputPath);
           if (outputFile.existsSync()) {
             var written = outputFile.lengthSync();
+            // 写入量展示（悬浮窗内部工作行用）
+            onSize?.call(written, inputSize);
             // 写入比例：纯音频输出约占总 TS 大小的 5~20%
             // 用 0.15 作为中间估计值
             var ratio = inputSize > 0
@@ -89,6 +92,14 @@ class TsUnpackService {
                 : 0.0;
             emitProgress(ratio);
           }
+        } else if (!completer.isCompleted && onSize != null) {
+          // 有精确进度源时仍上报写入量（仅展示，不推进度）
+          try {
+            var outputFile = File(outputPath);
+            if (outputFile.existsSync()) {
+              onSize(outputFile.lengthSync(), inputSize);
+            }
+          } catch (_) {}
         }
       });
     }

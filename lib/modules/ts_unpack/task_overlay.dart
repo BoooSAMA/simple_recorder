@@ -180,6 +180,21 @@ class _TaskBar extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                    // 第六行：写入量（无则隐藏）
+                    if (m.ffmpegSize.value.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          "▸ 已写入 ${m.ffmpegSize.value}",
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurface
+                                .withAlpha(110),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                   ],
                 );
               }),
