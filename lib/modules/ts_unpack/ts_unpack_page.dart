@@ -357,13 +357,15 @@ class TsUnpackPage extends StatelessWidget {
                         var someSel =
                             selCount > 0 && !allSel;
                         return GestureDetector(
+                          // 整块透明区都可点（opaque），触摸区 40px，图标仍 20px
+                          behavior: HitTestBehavior.opaque,
                           onTap: targets.isEmpty
                               ? null
                               : () => controller
                                   .toggleGroupSelection(groupIndex),
                           child: SizedBox(
-                            width: 28,
-                            height: 28,
+                            width: 40,
+                            height: 40,
                             child: Icon(
                               allSel
                                   ? Icons.check_box
@@ -665,9 +667,11 @@ class TsUnpackPage extends StatelessWidget {
               TextButton(
                 onPressed: () => controller.selectInterrupted(),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
                   visualDensity: VisualDensity.compact,
                   foregroundColor: Colors.red,
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 child:
                     const Text("全选中断", style: TextStyle(fontSize: 12)),
@@ -676,8 +680,10 @@ class TsUnpackPage extends StatelessWidget {
               TextButton(
                 onPressed: () => controller.selectUnpacked(),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
                   visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 child:
                     const Text("全选已解", style: TextStyle(fontSize: 12)),
