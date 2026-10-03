@@ -150,6 +150,21 @@ class SettingsPage extends StatelessWidget {
                       onChanged: (v) =>
                           controller.setAutoUnpackEnabled(v),
                     )),
+                Obx(() => SettingsNumber(
+                      title: "并行解包数",
+                      value: controller.unpackConcurrency.value,
+                      min: 1,
+                      max: 3,
+                      step: 1,
+                      unit: " 路",
+                      displayValue:
+                          "${controller.unpackConcurrency.value} 路",
+                      subtitle:
+                          "同时解包的文件数 (1~3)。转码格式(MP3/OGG)提速明显；M4A 直拷主要吃磁盘 IO，提升有限。开高会与录制争抢 CPU，卡顿请调回 1",
+                      showTextInput: true,
+                      onChanged: (v) =>
+                          controller.setUnpackConcurrency(v),
+                    )),
                 Obx(() {
                   var enabled = controller.autoUnpackEnabled.value;
                   return Opacity(

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:isolate';
 
 // ignore_for_file: curly_braces_in_flow_control_structures
@@ -387,7 +388,10 @@ class UnpackManager extends GetxController {
   // ── 解包/合并 (后台串行, 进度节流) ──
 
   void _emitProgress(double p) {
-    _pendingProgress = p.clamp(0.0, 1.0);
+    p = p.clamp(0.0, 1.0);
+    // 单调保护：并行任务乱序完成时丢弃回退值，进度条只进不退
+    if (p < _pendingProgress) return;
+    _pendingProgress = p;
     _progressThrottle ??= Timer(const Duration(milliseconds: 80), () {
       progress.value = _pendingProgress;
       _progressThrottle = null;
@@ -404,30 +408,39 @@ class UnpackManager extends GetxController {
     isProcessing.value = true;
     taskLabel.value = "解包";
     progress.value = 0.0;
+    _pendingProgress = 0.0;
     totalFiles.value = selectedFiles.length;
     currentFileIndex.value = 0;
     currentFileName.value = "";
     _clearFfmpegInfo();
     var successCount = 0, failCount = 0, tsLeftCount = 0;
     var failDetails = <String>[];
-    for (var i = 0; i < selectedFiles.length; i++) {
-      if (!isProcessing.value) break;
-      var file = selectedFiles[i];
-      currentFileIndex.value = i + 1;
-      currentFileName.value = file.fileName;
-      var targetFormat = AppSettingsController.instance.audioFormat.value;
-      // 短命令 + 清上一文件的状态行
-      final outName = file.fileName.replaceAll(
-          '.ts', Constant.audioFormatExtension(targetFormat));
-      ffmpegCommand.value = "ffmpeg -i ${file.fileName} → $outName";
-      ffmpegStatus.value = "";
-      ffmpegSize.value = "";
-      var result = await UnpackQueue.instance.enqueue(
+    // 同步队列并发度（设置 1~3；合并保持串行，不走这里）
+    final concurrency =
+        AppSettingsController.instance.unpackConcurrency.value.clamp(1, 3);
+    UnpackQueue.instance.maxConcurrent = concurrency;
+    var doneCount = 0;
+
+    Future<void> unpackOne(int i) async {
+      final file = selectedFiles[i];
+      final targetFormat = AppSettingsController.instance.audioFormat.value;
+      if (concurrency == 1) {
+        // 单路：按序显示当前文件（原有行为）
+        currentFileIndex.value = i + 1;
+        currentFileName.value = file.fileName;
+        final outName = file.fileName.replaceAll(
+            '.ts', Constant.audioFormatExtension(targetFormat));
+        ffmpegCommand.value = "ffmpeg -i ${file.fileName} → $outName";
+        ffmpegStatus.value = "";
+        ffmpegSize.value = "";
+      }
+      final result = await UnpackQueue.instance.enqueue(
         () => TsUnpackService.unpack(file.path,
             targetFormat: targetFormat,
             onProgress: (p) {
+              // 按启动序号加权（单调保护取最快者，进度条只进不退）
               _emitProgress(
-                  i / selectedFiles.length + p / selectedFiles.length);
+                  (i + p) / selectedFiles.length);
             },
             onLog: (msg) {
               final st = parseFfmpegStatus(msg);
@@ -438,6 +451,12 @@ class UnpackManager extends GetxController {
                   "${formatBytes(written)} / ${formatBytes(total)}";
             }),
       );
+      doneCount++;
+      if (concurrency > 1) {
+        // 多路：显示已完成数 + 最近完成的文件（避免多任务同时改名跳动）
+        currentFileIndex.value = doneCount;
+        currentFileName.value = file.fileName;
+      }
       if (result.success) {
         successCount++;
         file.isUnpacked.value = true;
@@ -447,6 +466,13 @@ class UnpackManager extends GetxController {
         failCount++;
         failDetails.add("${file.fileName}: ${result.error ?? '失败'}");
       }
+    }
+
+    // 分批并行：每批最多 concurrency 个同时跑，批间检查取消
+    for (var s = 0; s < selectedFiles.length; s += concurrency) {
+      if (!isProcessing.value) break;
+      final e = min(s + concurrency, selectedFiles.length);
+      await Future.wait([for (var i = s; i < e; i++) unpackOne(i)]);
     }
     _progressThrottle?.cancel();
     _progressThrottle = null;
@@ -512,6 +538,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = false;
     taskLabel.value = "";
     progress.value = 0.0;
+    _pendingProgress = 0.0;
     currentFileIndex.value = 0;
     totalFiles.value = 0;
     currentFileName.value = "";
@@ -652,6 +679,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = true;
     taskLabel.value = "合并";
     progress.value = 0.0;
+    _pendingProgress = 0.0;
     totalFiles.value = totalCount;
     currentFileIndex.value = 0;
     currentFileName.value = "";
@@ -775,6 +803,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = true;
     taskLabel.value = "合并";
     progress.value = 0.0;
+    _pendingProgress = 0.0;
     totalFiles.value = totalCount;
     currentFileIndex.value = 0;
     currentFileName.value = "";
@@ -856,6 +885,7 @@ class UnpackManager extends GetxController {
     isProcessing.value = true;
     taskLabel.value = "合并";
     progress.value = 0.0;
+    _pendingProgress = 0.0;
     totalFiles.value = files.length;
     currentFileIndex.value = 0;
     currentFileName.value = "合并中...";
