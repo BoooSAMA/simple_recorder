@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new_https_gpl/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_https_gpl/session_state.dart';
 
 import 'package:simple_recorder/app/constant.dart';
 import 'package:simple_recorder/app/controller/app_settings_controller.dart';
@@ -64,6 +65,11 @@ class TsUnpackService {
     var completer = Completer<UnpackResult>();
     var inputFile = File(tsPath);
     var inputSize = inputFile.lengthSync();
+    // 看门狗状态：转码 time 与输出大小，任一推进都算活着
+    var lastTimeSec = -1.0;
+    var lastSizeBytes = -1;
+    var lastActiveAt = DateTime.now();
+    var killedByWatchdog = false;
 
     // 进度统一出口：只允许前进，忽略回退值，避免进度条反复跳动
     var lastProgress = 0.0;
@@ -75,6 +81,29 @@ class TsUnpackService {
 
     // 文件尺寸进度监测：仅当无法从 FFmpeg 日志获取精确时长时作为后备
     Timer? progressTimer;
+    // stall 看门狗：time 与输出大小 90 秒都无推进，判定转码卡死，
+    // 杀掉 session 放行队列（坏包 TS 会 stall 空转，输出 stat 抖动但不推进）
+    Timer? watchdog;
+    void touchActive() => lastActiveAt = DateTime.now();
+    Future<void> killStalled() async {
+      try {
+        final sessions = await FFmpegKit.listSessions();
+        for (final s in sessions) {
+          try {
+            if (await s.getState() != SessionState.running) continue;
+            if ((s.getCommand() ?? '').contains(outputPath)) {
+              final id = s.getSessionId();
+              if (id != null) {
+                Log.logPrint("解包 stall 超时，取消 session $id: $tsPath");
+                await FFmpegKit.cancel(id);
+                killedByWatchdog = true;
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
     if (onProgress != null || onSize != null) {
       progressTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
         // totalDuration > 0 说明已有精确进度源（FFprobe 或日志 Duration 行），
@@ -83,6 +112,11 @@ class TsUnpackService {
           var outputFile = File(outputPath);
           if (outputFile.existsSync()) {
             var written = outputFile.lengthSync();
+            // 输出增长才算活着（stat 抖动不算，避免坏包 stall 误判为活跃）
+            if (written > lastSizeBytes) {
+              lastSizeBytes = written;
+              touchActive();
+            }
             // 写入量展示（悬浮窗内部工作行用）
             onSize?.call(written, inputSize);
             // 写入比例：纯音频输出约占总 TS 大小的 5~20%
@@ -97,9 +131,21 @@ class TsUnpackService {
           try {
             var outputFile = File(outputPath);
             if (outputFile.existsSync()) {
-              onSize(outputFile.lengthSync(), inputSize);
+              final written = outputFile.lengthSync();
+              if (written > lastSizeBytes) {
+                lastSizeBytes = written;
+                touchActive();
+              }
+              onSize(written, inputSize);
             }
           } catch (_) {}
+        }
+      });
+      // 看门狗每 5 秒检查一次，90 秒无有效进展则杀掉放行
+      watchdog = Timer.periodic(const Duration(seconds: 5), (_) {
+        if (completer.isCompleted) return;
+        if (DateTime.now().difference(lastActiveAt).inSeconds >= 90) {
+          killStalled();
         }
       });
     }
@@ -108,6 +154,7 @@ class TsUnpackService {
       args,
       (session) async {
         progressTimer?.cancel();
+        watchdog?.cancel();
         var returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode)) {
           Log.logPrint("解包成功: $outputPath");
@@ -126,7 +173,7 @@ class TsUnpackService {
           completer.complete(UnpackResult(
             success: false,
             path: tsPath,
-            error: "已取消",
+            error: killedByWatchdog ? "转码停滞超时，已跳过" : "已取消",
           ));
         } else {
           var output = await session.getOutput();
@@ -171,6 +218,11 @@ class TsUnpackService {
               timeMatch.group(2)!,
               timeMatch.group(3)!,
             );
+            // time 推进才算活着（stall 时 time 停住，日志再多也不续命）
+            if (current > lastTimeSec) {
+              lastTimeSec = current;
+              touchActive();
+            }
             emitProgress(current / totalDuration);
           }
         }

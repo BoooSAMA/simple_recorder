@@ -62,6 +62,8 @@ class UnpackManager extends GetxController {
   // 进度节流
   Timer? _progressThrottle;
   double _pendingProgress = 0;
+  // 已展示的最大写入字节（单调显示，stat 抖动不回退）
+  int _maxShownBytes = 0;
   // 状态行节流（文本 200ms 一刷即可）
   Timer? _statusThrottle;
   String _pendingStatus = "";
@@ -409,6 +411,7 @@ class UnpackManager extends GetxController {
     taskLabel.value = "解包";
     progress.value = 0.0;
     _pendingProgress = 0.0;
+    _maxShownBytes = 0;
     totalFiles.value = selectedFiles.length;
     currentFileIndex.value = 0;
     currentFileName.value = "";
@@ -447,8 +450,12 @@ class UnpackManager extends GetxController {
               if (st != null) emitStatus(st);
             },
             onSize: (written, total) {
-              ffmpegSize.value =
-                  "${formatBytes(written)} / ${formatBytes(total)}";
+              // 单调显示最大值，stat 抖动不再上下晃
+              if (written > _maxShownBytes) {
+                _maxShownBytes = written;
+                ffmpegSize.value =
+                    "${formatBytes(written)} / ${formatBytes(total)}";
+              }
             }),
       );
       doneCount++;
