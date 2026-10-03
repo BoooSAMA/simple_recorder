@@ -1027,11 +1027,58 @@ class UnpackManager extends GetxController {
         } catch (_) {}
       });
     }
+    // 看门狗：concat copy 极快，session 瞬间结束时插件完成回调可能丢失，
+    // 导致 completer 永不 complete（进度卡住、队列卡死），但文件实际已产出。
+    // 兜底策略：输出文件大小连续 3 秒无增长即判完成；超时则按输出有效性放行，
+    // 让流程继续而不是永远卡住。
+    final startedAt = DateTime.now();
+    final timeout = Duration(
+        seconds: max(120, totalBytes ~/ (20 * 1024 * 1024) + 60));
+    Timer? watchdog;
+    var lastSize = -1;
+    var stableCount = 0;
+    watchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (completer.isCompleted) {
+        watchdog?.cancel();
+        return;
+      }
+      // 超时保底：输出有效算成功，否则算失败，流程继续
+      if (DateTime.now().difference(startedAt) > timeout) {
+        var ok = false;
+        try {
+          final out = File(outputPath);
+          ok = out.existsSync() && out.lengthSync() > 0;
+        } catch (_) {}
+        Log.logPrint(
+            "concat 看门狗超时，输出${ok ? "有效" : "无效"}，放行流程");
+        if (ok) emit(1.0);
+        completer.complete(ok);
+        return;
+      }
+      // 稳定检测：大小连续 3 秒无增长且 >0，判完成
+      try {
+        final out = File(outputPath);
+        if (!out.existsSync()) return;
+        final size = out.lengthSync();
+        if (size == lastSize && size > 0) {
+          if (++stableCount >= 3) {
+            Log.logPrint("concat 看门狗：输出稳定，判完成（回调可能丢失）");
+            emit(1.0);
+            completer.complete(true);
+          }
+        } else {
+          stableCount = 0;
+          lastSize = size;
+        }
+      } catch (_) {}
+    });
     try {
       await FFmpegKit.executeWithArgumentsAsync(
         ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', outputPath],
         (session) async {
           sizeTimer?.cancel();
+          // ignore: invalid_null_aware_operator
+          watchdog?.cancel();
           var returnCode = await session.getReturnCode();
           if (ReturnCode.isSuccess(returnCode)) {
             emit(1.0);
@@ -1058,6 +1105,7 @@ class UnpackManager extends GetxController {
       if (!completer.isCompleted) completer.complete(false);
     } finally {
       sizeTimer?.cancel();
+      watchdog.cancel();
     }
     return completer.future;
   }

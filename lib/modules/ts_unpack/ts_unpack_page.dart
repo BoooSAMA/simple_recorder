@@ -643,7 +643,7 @@ class TsUnpackPage extends StatelessWidget {
           color: theme.colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(28),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
             child: child,
           ),
         );
@@ -668,57 +668,57 @@ class TsUnpackPage extends StatelessWidget {
                 onPressed: () => controller.selectInterrupted(),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                      horizontal: 17, vertical: 11),
                   visualDensity: VisualDensity.compact,
                   foregroundColor: Colors.red,
                   tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 child:
-                    const Text("全选中断", style: TextStyle(fontSize: 12)),
+                    const Text("全选中断", style: TextStyle(fontSize: 17)),
               ),
               // 全选已解
               TextButton(
                 onPressed: () => controller.selectUnpacked(),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                      horizontal: 17, vertical: 11),
                   visualDensity: VisualDensity.compact,
                   tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 child:
-                    const Text("全选已解", style: TextStyle(fontSize: 12)),
+                    const Text("全选已解", style: TextStyle(fontSize: 17)),
               ),
               Container(
                 width: 1,
-                height: 24,
+                height: 34,
                 color: theme.dividerColor,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
+                margin: const EdgeInsets.symmetric(horizontal: 6),
               ),
               // 合并（图标，禁用态）
               IconButton(
                 onPressed: null,
-                icon: const Icon(Icons.merge, size: 20),
+                icon: const Icon(Icons.merge, size: 28),
                 visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(11),
                 tooltip: "合并",
               ),
               // 删除（图标，禁用态）
               IconButton(
                 onPressed: null,
-                icon: const Icon(Icons.delete_outline, size: 20),
+                icon: const Icon(Icons.delete_outline, size: 28),
                 visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(11),
                 tooltip: "删除",
               ),
               // 解包（图标，禁用态）
               FilledButton(
                 onPressed: null,
                 style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(14),
                   visualDensity: VisualDensity.compact,
                   shape: const CircleBorder(),
                 ),
-                child: const Icon(Icons.unarchive, size: 18),
+                child: const Icon(Icons.unarchive, size: 25),
               ),
             ],
           ),
@@ -735,53 +735,54 @@ class TsUnpackPage extends StatelessWidget {
                 "$selected 已选",
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  fontSize: 17,
                 ),
               ),
             ),
             // 清空选择
             IconButton(
               onPressed: () => controller.deselectAll(),
-              icon: const Icon(Icons.close, size: 18),
+              icon: const Icon(Icons.close, size: 25),
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(11),
               tooltip: "清空选择",
             ),
             Container(
               width: 1,
-              height: 24,
+              height: 34,
               color: theme.dividerColor,
-              margin: const EdgeInsets.symmetric(horizontal: 4),
+              margin: const EdgeInsets.symmetric(horizontal: 6),
             ),
             // 合并（图标，仅同一主播 ≥2 个可点）
             IconButton(
               onPressed: controller.canMergeSelected
                   ? () => controller.mergeSelected()
                   : null,
-              icon: const Icon(Icons.merge, size: 20),
+              icon: const Icon(Icons.merge, size: 28),
               color: theme.colorScheme.primary,
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(11),
               tooltip: "合并同一主播的 TS 文件",
             ),
             // 删除（图标，选中即可点）
             IconButton(
               onPressed: () => controller.deleteSelected(),
-              icon: const Icon(Icons.delete_outline, size: 20),
+              icon: const Icon(Icons.delete_outline, size: 28),
               color: theme.colorScheme.error,
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(11),
               tooltip: "删除",
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
             // 解包（图标）
             FilledButton(
               onPressed: () => controller.startBatchUnpack(),
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(17),
                 visualDensity: VisualDensity.compact,
                 shape: const CircleBorder(),
               ),
-              child: const Icon(Icons.unarchive, size: 20),
+              child: const Icon(Icons.unarchive, size: 28),
             ),
           ],
         ),
