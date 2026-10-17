@@ -64,6 +64,19 @@ class UnpackManager extends GetxController {
   double _pendingProgress = 0;
   // 已展示的最大写入字节（单调显示，stat 抖动不回退）
   int _maxShownBytes = 0;
+  // 批次代数与活跃标记（取消/强杀防误伤：新批次开启后旧定时器失效）
+  int _batchGen = 0;
+  bool _batchActive = false;
+
+  int _beginBatch() {
+    _batchGen++;
+    _batchActive = true;
+    return _batchGen;
+  }
+
+  void _endBatch(int gen) {
+    if (_batchGen == gen) _batchActive = false;
+  }
   // 状态行节流（文本 200ms 一刷即可）
   Timer? _statusThrottle;
   String _pendingStatus = "";
@@ -408,6 +421,7 @@ class UnpackManager extends GetxController {
       return;
     }
     isProcessing.value = true;
+    final myGen = _beginBatch();
     taskLabel.value = "解包";
     progress.value = 0.0;
     _pendingProgress = 0.0;
@@ -497,20 +511,33 @@ class UnpackManager extends GetxController {
       Log.logPrint("解包失败详情:\n${failDetails.join('\n')}");
     }
     AppNotify.toast(summary);
+    _endBatch(myGen);
     await scanDirectory();
   }
 
-  void cancelBatch() => isProcessing.value = false;
-
-  /// 强制重置（刷新按钮）：解包/合并卡住不动时的救命键
+  /// 取消当前批次
   ///
-  /// 依次做四件事：
-  /// 1. 取消所有非录制的 FFmpeg session（卡死的解包/合并/探测），录制中的不受影响；
-  /// 2. 重置 UnpackQueue 串行链，后续新任务不再被旧任务阻塞；
-  /// 3. 重置进度状态，收起悬浮进度条；
-  /// 4. 重扫文件列表（等价于普通刷新）。
-  /// 无卡住时调用等价于普通刷新，无副作用。
-  Future<void> forceReset() async {
+  /// 温和取消：当前任务自然结束后循环退出。但如果任务已卡死（FFmpeg
+  /// 停滞），温和取消永远等不到响应——3 秒后仍活跃则强杀非录制
+  /// session（录制绝不误伤），保证取消在任何情况下都有实际效果。
+  void cancelBatch() {
+    if (!isProcessing.value) return;
+    isProcessing.value = false;
+    final gen = _batchGen;
+    Timer(const Duration(seconds: 3), () async {
+      if (_batchActive && _batchGen == gen) {
+        final killed = await _killNonRecordingSessions();
+        if (killed > 0) {
+          AppNotify.toast("已强制停止 $killed 个卡住的任务");
+          Log.logPrint("取消超时强杀：$killed 个非录制 session");
+        }
+      }
+    });
+  }
+
+  /// 杀掉所有非录制的 running session（解包/合并/探测卡死），返回数量。
+  /// 录制 session 通过命令行含其输出路径识别，绝不误伤。
+  Future<int> _killNonRecordingSessions() async {
     var killed = 0;
     try {
       final sessions = await FFmpegKit.listSessions();
@@ -522,9 +549,7 @@ class UnpackManager extends GetxController {
         try {
           if (await s.getState() != SessionState.running) continue;
           final cmd = s.getCommand() ?? '';
-          // 命令行里含录制输出路径 → 正在录制，绝不碰
-          final isRecording =
-              recordingPaths.any((p) => cmd.contains(p));
+          final isRecording = recordingPaths.any((p) => cmd.contains(p));
           if (isRecording) continue;
           final id = s.getSessionId();
           if (id != null) {
@@ -534,8 +559,24 @@ class UnpackManager extends GetxController {
         } catch (_) {}
       }
     } catch (e) {
-      Log.logPrint("强制重置列举 session 失败: $e");
+      Log.logPrint("列举 session 失败: $e");
     }
+    return killed;
+  }
+
+  /// 强制重置（刷新按钮）：解包/合并卡住不动时的救命键
+  ///
+  /// 依次做四件事：
+  /// 1. 取消所有非录制的 FFmpeg session（卡死的解包/合并/探测），录制中的不受影响；
+  /// 2. 重置 UnpackQueue 串行链，后续新任务不再被旧任务阻塞；
+  /// 3. 重置进度状态，收起悬浮进度条；
+  /// 4. 重扫文件列表（等价于普通刷新）。
+  /// 无卡住时调用等价于普通刷新，无副作用。
+  Future<void> forceReset() async {
+    // 代数推进：让取消超时强杀等旧定时器全部失效，防干扰新批次
+    _batchGen++;
+    _batchActive = false;
+    var killed = await _killNonRecordingSessions();
 
     // 被 cancel 的任务会走 Cancel 回调、for 循环检测到 isProcessing=false 后退出；
     // 先重置队列再重置状态，避免旧任务 resolve 时干扰新状态
@@ -684,6 +725,7 @@ class UnpackManager extends GetxController {
     );
     if (confirm != true) return;
     isProcessing.value = true;
+    final myGen = _beginBatch();
     taskLabel.value = "合并";
     progress.value = 0.0;
     _pendingProgress = 0.0;
@@ -693,10 +735,14 @@ class UnpackManager extends GetxController {
     _clearFfmpegInfo();
     var successCount = 0, failCount = 0;
     for (var frag in fragments) {
+      if (!isProcessing.value) break;
       var dir = Directory(frag.files.first.item.path).parent.path;
       var outputPath = "$dir/${frag.owner}_${frag.date}_${frag.earliestStart}_${frag.latestEnd}_merged.ts";
       ffmpegCommand.value = "ffmpeg -f concat ×${frag.files.length} → ${outputPath.split('/').last}";
-      var listFile = File("$dir/_concat_list.txt");
+      // 唯一命名：防止回调丢失场景下旧 session 还在读 list 时
+      // 下一组覆写同名文件，导致输出混入其他组内容（异常大文件）
+      var listFile =
+          File("$dir/_concat_list_${DateTime.now().microsecondsSinceEpoch}.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
       for (var f in frag.files) {
         var escaped = f.item.path.replaceAll("'", "'\\''");
@@ -745,6 +791,7 @@ class UnpackManager extends GetxController {
     var summary = "碎片合并完成：$successCount 个文件已合并";
     if (failCount > 0) summary += "，$failCount 个失败";
     AppNotify.toast(summary);
+    _endBatch(myGen);
     await scanDirectory();
   }
 
@@ -808,6 +855,7 @@ class UnpackManager extends GetxController {
     );
     if (confirm != true) return;
     isProcessing.value = true;
+    final myGen = _beginBatch();
     taskLabel.value = "合并";
     progress.value = 0.0;
     _pendingProgress = 0.0;
@@ -817,10 +865,14 @@ class UnpackManager extends GetxController {
     _clearFfmpegInfo();
     var successCount = 0, failCount = 0;
     for (var group in allFragments) {
+      if (!isProcessing.value) break;
       var dir = Directory(group.files.first.item.path).parent.path;
       var outputPath = "$dir/${group.owner}_${group.date}_${group.earliestStart}_${group.latestEnd}_merged.ts";
       ffmpegCommand.value = "ffmpeg -f concat ×${group.files.length} → ${outputPath.split('/').last}";
-      var listFile = File("$dir/_concat_list.txt");
+      // 唯一命名：防止回调丢失场景下旧 session 还在读 list 时
+      // 下一组覆写同名文件，导致输出混入其他组内容（异常大文件）
+      var listFile =
+          File("$dir/_concat_list_${DateTime.now().microsecondsSinceEpoch}.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
       for (var f in group.files) {
         var escaped = f.item.path.replaceAll("'", "'\\''");
@@ -870,6 +922,7 @@ class UnpackManager extends GetxController {
     var summary = "碎片合并完成：$successCount 个文件已合并";
     if (failCount > 0) summary += "，$failCount 个失败";
     AppNotify.toast(summary);
+    _endBatch(myGen);
     await scanDirectory();
   }
 
@@ -890,6 +943,7 @@ class UnpackManager extends GetxController {
     var outputPath = "$dir/${nameParts}_merged.ts";
     ffmpegCommand.value = "ffmpeg -f concat ×${files.length} → ${outputPath.split('/').last}";
     isProcessing.value = true;
+    final myGen = _beginBatch();
     taskLabel.value = "合并";
     progress.value = 0.0;
     _pendingProgress = 0.0;
@@ -899,7 +953,10 @@ class UnpackManager extends GetxController {
     ffmpegStatus.value = "";
     ffmpegSize.value = "";
     try {
-      var listFile = File("$dir/_concat_list.txt");
+      // 唯一命名：防止回调丢失场景下旧 session 还在读 list 时
+      // 下一组覆写同名文件，导致输出混入其他组内容（异常大文件）
+      var listFile =
+          File("$dir/_concat_list_${DateTime.now().microsecondsSinceEpoch}.txt");
       var sink = listFile.openWrite(mode: FileMode.write);
       for (var f in files) {
         var escaped = f.path.replaceAll("'", "'\\''");
@@ -945,6 +1002,7 @@ class UnpackManager extends GetxController {
       progress.value = 1.0;
       currentFileName.value = "";
       _clearFfmpegInfo();
+      _endBatch(myGen);
     }
   }
 
@@ -1018,6 +1076,47 @@ class UnpackManager extends GetxController {
       lastProgress = p;
       onProgress(p);
     }
+    // 统一的完成入口（防重：看门狗与 session 回调可能同时到达）
+    void finish(bool ok) {
+      if (completer.isCompleted) return;
+      if (ok) emit(1.0);
+      completer.complete(ok);
+    }
+
+    // 该输出路径是否仍有 running 的 FFmpeg session；查询失败返回 null
+    Future<bool?> sessionRunning() async {
+      try {
+        final sessions = await FFmpegKit.listSessions();
+        for (final s in sessions) {
+          try {
+            if (await s.getState() != SessionState.running) continue;
+            if ((s.getCommand() ?? '').contains(outputPath)) return true;
+          } catch (_) {}
+        }
+        return false;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // 强杀正在写该输出路径的 session（stall/超时放行前调用）
+    Future<void> killSession() async {
+      try {
+        final sessions = await FFmpegKit.listSessions();
+        for (final s in sessions) {
+          try {
+            if (await s.getState() != SessionState.running) continue;
+            if (!(s.getCommand() ?? '').contains(outputPath)) continue;
+            final id = s.getSessionId();
+            if (id != null) {
+              Log.logPrint("concat stall 超时，取消 session $id: $outputPath");
+              await FFmpegKit.cancel(id);
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
     // 大小进度监测：200ms 刷一次输出文件大小（进度 + 写入量展示）
     Timer? sizeTimer;
     if (totalBytes > 0) {
@@ -1034,65 +1133,79 @@ class UnpackManager extends GetxController {
         } catch (_) {}
       });
     }
-    // 看门狗：concat copy 极快，session 瞬间结束时插件完成回调可能丢失，
-    // 导致 completer 永不 complete（进度卡住、队列卡死），但文件实际已产出。
-    // 兜底策略：输出文件大小连续 3 秒无增长即判完成；超时则按输出有效性放行，
-    // 让流程继续而不是永远卡住。
+    // 看门狗：concat copy 极快，插件完成回调可能丢失（文件已产出但
+    // completer 永不 resolve，进度卡死、队列堵塞）。判定必须从严：
+    // "大小稳定 + 该输出已无 running session" 才是真完成——否则会把
+    // 慢 IO 停顿误判成完成（导致源文件被提前删除、下一组覆写 concat
+    // list，产出混入其他组内容的异常大文件）。长时间无增长则视为
+    // stall 强杀放行，绝不无限卡住。
     final startedAt = DateTime.now();
-    final timeout = Duration(
-        seconds: max(120, totalBytes ~/ (20 * 1024 * 1024) + 60));
+    final hardTimeout = Duration(
+        seconds: max(300, totalBytes ~/ (5 * 1024 * 1024) + 120));
     Timer? watchdog;
     var lastSize = -1;
     var stableCount = 0;
-    watchdog = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (completer.isCompleted) {
-        watchdog?.cancel();
-        return;
-      }
-      // 超时保底：输出有效算成功，否则算失败，流程继续
-      if (DateTime.now().difference(startedAt) > timeout) {
-        var ok = false;
+    var lastActiveAt = DateTime.now();
+    var checking = false;
+    watchdog = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (completer.isCompleted || checking) return;
+      checking = true;
+      try {
+        var size = -1;
         try {
           final out = File(outputPath);
-          ok = out.existsSync() && out.lengthSync() > 0;
+          if (out.existsSync()) size = out.lengthSync();
         } catch (_) {}
-        Log.logPrint(
-            "concat 看门狗超时，输出${ok ? "有效" : "无效"}，放行流程");
-        if (ok) emit(1.0);
-        completer.complete(ok);
-        return;
-      }
-      // 稳定检测：大小连续 3 秒无增长且 >0，判完成
-      try {
-        final out = File(outputPath);
-        if (!out.existsSync()) return;
-        final size = out.lengthSync();
-        if (size == lastSize && size > 0) {
-          if (++stableCount >= 3) {
-            Log.logPrint("concat 看门狗：输出稳定，判完成（回调可能丢失）");
-            emit(1.0);
-            completer.complete(true);
-          }
-        } else {
-          stableCount = 0;
+        if (size > lastSize) {
           lastSize = size;
+          lastActiveAt = DateTime.now();
+          stableCount = 0;
+        } else if (size == lastSize && size >= 0) {
+          stableCount++;
         }
-      } catch (_) {}
+        // 判定 1：大小稳定 → 查 session；无 running 才算真结束。
+        // size>0 时稳定 3 秒即可判定；0 字节（快速失败场景）需稳定 30 秒，
+        // 避免 FFmpeg 启动初期还没产出时被误判。
+        if (stableCount >= 3 && (size > 0 || stableCount >= 30)) {
+          stableCount = 0;
+          final running = await sessionRunning();
+          if (running == false) {
+            if (size > 0) {
+              Log.logPrint("concat 看门狗：输出稳定且无运行 session，判完成");
+            } else {
+              Log.logPrint("concat 看门狗：输出为空且无运行 session，判失败");
+            }
+            finish(size > 0);
+            return;
+          }
+        }
+        // 判定 2：180 秒无增长 → stall 强杀放行（拷贝中途被杀=坏文件，判失败）
+        final idle = DateTime.now().difference(lastActiveAt).inSeconds;
+        if (idle >= 180) {
+          Log.logPrint("concat stall 无增长 ${idle}s，强杀放行");
+          await killSession();
+          finish(false);
+          return;
+        }
+        // 判定 3：硬超时兜底（有增长但异常慢的极端情况）
+        if (DateTime.now().difference(startedAt) > hardTimeout) {
+          Log.logPrint("concat 硬超时，强杀放行");
+          await killSession();
+          finish(false);
+          return;
+        }
+      } finally {
+        checking = false;
+      }
     });
     try {
       await FFmpegKit.executeWithArgumentsAsync(
         ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', outputPath],
         (session) async {
           sizeTimer?.cancel();
-          // ignore: invalid_null_aware_operator
           watchdog?.cancel();
           var returnCode = await session.getReturnCode();
-          if (ReturnCode.isSuccess(returnCode)) {
-            emit(1.0);
-            completer.complete(true);
-          } else {
-            completer.complete(false);
-          }
+          finish(ReturnCode.isSuccess(returnCode));
         },
         (log) {
           var msg = log.getMessage();
@@ -1109,10 +1222,15 @@ class UnpackManager extends GetxController {
       );
     } catch (e) {
       Log.logPrint("FFmpeg concat 执行失败: $e");
-      if (!completer.isCompleted) completer.complete(false);
+      finish(false);
     } finally {
       sizeTimer?.cancel();
       watchdog.cancel();
+      // 清理本次唯一的 list 文件（防残留字符累积）
+      try {
+        final lf = File(listPath);
+        if (lf.existsSync()) lf.deleteSync();
+      } catch (_) {}
     }
     return completer.future;
   }
