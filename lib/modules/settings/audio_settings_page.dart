@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -90,25 +91,25 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
     );
   }
 
-  void _showRecordedFiles() {
+  Future<void> _showRecordedFiles() async {
     var saveDir = controller.audioSavePath.value;
     if (saveDir.isEmpty) {
       AppNotify.toast("请先设置音频存储路径");
       return;
     }
 
-    var dir = Directory(saveDir);
-    if (!dir.existsSync()) {
+    if (!Directory(saveDir).existsSync()) {
       AppNotify.toast("存储目录不存在");
       return;
     }
 
-    var files = dir
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => Constant.kAllAudioExtensions.any((ext) => f.path.endsWith(ext)))
-        .toList()
-      ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    // 目录递归遍历 / stat 在后台 isolate 执行，大目录不卡 UI
+    List<Map<String, Object>> files;
+    try {
+      files = await Isolate.run(() => _scanAudioFilesSync(saveDir));
+    } catch (_) {
+      files = [];
+    }
 
     if (files.isEmpty) {
       AppNotify.toast("暂无录音文件");
@@ -154,18 +155,20 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
                 separatorBuilder: (_, i) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   var file = files[index];
-                  var sizeStr = _formatFileSize(file.lengthSync());
-                  var modTime = _formatDateTime(file.lastModifiedSync());
+                  var sizeStr = _formatFileSize(file['sizeBytes'] as int);
+                  var modTime = _formatDateTime(
+                      DateTime.fromMillisecondsSinceEpoch(
+                          file['mtimeMs'] as int));
                   return ListTile(
                     leading:
                         const Icon(Icons.audiotrack, color: Colors.grey),
                     title: Text(
-                      file.path.split('/').last,
+                      file['name'] as String,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text("$sizeStr · $modTime"),
-                    onTap: () => OpenFilex.open(file.path),
+                    onTap: () => OpenFilex.open(file['path'] as String),
                   );
                 },
               ),
@@ -179,7 +182,10 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return "$bytes B";
     if (bytes < 1024 * 1024) return "${(bytes / 1024).toStringAsFixed(1)} KB";
-    return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+    if (bytes < 1024 * 1024 * 1024) {
+      return "${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+    }
+    return "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB";
   }
 
   String _formatDateTime(DateTime dt) {
@@ -248,4 +254,31 @@ class AudioSettingsPage extends GetView<AppSettingsController> {
   void _openSaveDir() {
     Get.toNamed(RoutePath.kRecordings);
   }
+}
+
+/// 后台 isolate：递归扫描目录下全部音频文件并读取 stat（大小/修改时间），
+/// 按修改时间降序排序后返回 [{path, name, mtimeMs, sizeBytes}]。
+List<Map<String, Object>> _scanAudioFilesSync(String rootPath) {
+  final dir = Directory(rootPath);
+  if (!dir.existsSync()) return [];
+
+  final exts = Constant.kAllAudioExtensions;
+  final result = <Map<String, Object>>[];
+  for (var f in dir.listSync(recursive: true)) {
+    if (f is! File) continue;
+    if (!exts.any((ext) => f.path.endsWith(ext))) continue;
+    try {
+      final stat = f.statSync();
+      result.add({
+        'path': f.path,
+        'name': f.path.split('/').last,
+        'mtimeMs': stat.modified.millisecondsSinceEpoch,
+        'sizeBytes': stat.size,
+      });
+    } catch (_) {
+      // 扫描期间文件被删除/无权限 → 跳过该文件
+    }
+  }
+  result.sort((a, b) => (b['mtimeMs'] as int).compareTo(a['mtimeMs'] as int));
+  return result;
 }

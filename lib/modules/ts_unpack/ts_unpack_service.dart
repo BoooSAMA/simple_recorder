@@ -39,7 +39,7 @@ class TsUnpackService {
     void Function(int writtenBytes, int inputBytes)? onSize,
   }) async {
     var ext = Constant.audioFormatExtension(targetFormat);
-    var outputPath = tsPath.replaceAll('.ts', ext);
+    var outputPath = tsPath.replaceFirst(RegExp(r'\.ts$'), ext);
 
     // 检查同名文件是否已存在
     if (File(outputPath).existsSync()) {

@@ -145,9 +145,8 @@ class FollowExportService {
       EventBus.instance.emit(Constant.kUpdateFollow, null);
 
       if (pinnedIds.isNotEmpty) {
-        for (final id in pinnedIds) {
-          AppSettingsController.instance.toggleFollowPin(id);
-        }
+        // 批量写入置顶（一次性落盘；旧的逐条 toggle 会把已置顶的误取消）
+        await AppSettingsController.instance.addPinnedFollowIds(pinnedIds);
       }
 
       AppNotify.toast('导入成功，共导入 $importedCount 个关注用户');

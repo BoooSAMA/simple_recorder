@@ -598,7 +598,8 @@ class RecordingSession {
 
     var format = AppSettingsController.instance.audioFormat.value;
     var ext = Constant.audioFormatExtension(format);
-    var outputPath = tsPath.replaceAll('.ts', ext);
+    var outputPath =
+        tsPath.replaceFirst(RegExp(r'\.ts$'), ext);
 
     // 避免重复解包（目标文件已存在）
     if (File(outputPath).existsSync()) return;

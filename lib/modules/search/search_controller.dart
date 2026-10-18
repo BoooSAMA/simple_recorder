@@ -46,8 +46,16 @@ class LiveSearchController extends GetxController {
     selectedSiteId.value = siteId;
   }
 
+  /// 搜索请求代际：每次新搜索自增，过期的响应（慢请求晚到）直接丢弃，
+  /// 防止快速切换关键词/平台时旧结果覆盖新结果
+  int _searchGen = 0;
+
+  /// 头像拉取代际：新一轮拉取开启后，旧一轮尽快停止写入
+  int _avatarGen = 0;
+
   Future<void> search(String keyword, {bool loadMore = false}) async {
     if (keyword.isEmpty) return;
+    final gen = ++_searchGen;
 
     if (!loadMore) {
       _page = 1;
@@ -65,6 +73,7 @@ class LiveSearchController extends GetxController {
 
     try {
       var result = await site.liveSite.searchRooms(keyword, page: _page);
+      if (gen != _searchGen) return; // 已发起新搜索，丢弃过期结果
 
       if (loadMore) {
         searchResults.addAll(result.items);
@@ -76,47 +85,54 @@ class LiveSearchController extends GetxController {
       _page++;
 
       // 异步拉取主播头像（不阻塞 UI）
-      _fetchAvatars(result.items);
+      _fetchAvatars(result.items, site);
     } catch (e) {
+      if (gen != _searchGen) return;
       AppNotify.snackbar("搜索失败", e.toString());
     } finally {
-      isSearching.value = false;
+      // 只有当前代际才复位，避免把新搜索的 loading 提前撤掉
+      if (gen == _searchGen) isSearching.value = false;
     }
   }
 
-  /// 并行拉取搜索结果的真实主播头像
-  Future<void> _fetchAvatars(List<LiveRoomItem> items) async {
+  /// 并行拉取搜索结果的真实主播头像（site 由调用方固定传入，
+  /// 避免异步过程中用户切换平台导致头像错配）
+  Future<void> _fetchAvatars(List<LiveRoomItem> items, Site site) async {
+    final gen = ++_avatarGen;
     if (items.isEmpty) return;
     isLoadingAvatars.value = true;
 
-    var site = Sites.getSite(selectedSiteId.value);
-    if (site == null) return;
-
-    // 分批并发，每批最多 5 个
-    const batchSize = 5;
-    for (var i = 0; i < items.length; i += batchSize) {
-      var batch = items.sublist(
-        i,
-        i + batchSize > items.length ? items.length : i + batchSize,
-      );
-      await Future.wait(batch.map((item) async {
-        try {
-          var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
-          if (detail.userAvatar.isNotEmpty) {
-            avatarMap[item.roomId] = detail.userAvatar;
+    try {
+      // 分批并发，每批最多 5 个
+      const batchSize = 5;
+      for (var i = 0; i < items.length; i += batchSize) {
+        if (gen != _avatarGen) return; // 新一轮拉取已开始
+        var batch = items.sublist(
+          i,
+          i + batchSize > items.length ? items.length : i + batchSize,
+        );
+        await Future.wait(batch.map((item) async {
+          try {
+            var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
+            if (gen != _avatarGen) return;
+            if (detail.userAvatar.isNotEmpty) {
+              avatarMap[item.roomId] = detail.userAvatar;
+            }
+          } catch (_) {
+            // 单个获取失败不影响其他
           }
-        } catch (_) {
-          // 单个获取失败不影响其他
-        }
-      }));
+        }));
+      }
+    } finally {
+      if (gen == _avatarGen) isLoadingAvatars.value = false;
     }
-
-    isLoadingAvatars.value = false;
   }
 
   /// 收藏直播间，同时获取主播真实头像
   Future<void> followRoom(LiveRoomItem item) async {
-    var id = "${selectedSiteId.value}_${item.roomId}";
+    // 先固定平台 ID：后续 await 期间用户可能切换平台，不能再用响应式值
+    final siteId = selectedSiteId.value;
+    var id = "${siteId}_${item.roomId}";
     if (DBService.instance.getFollowExist(id)) {
       AppNotify.snackbar("提示", "已收藏该直播间");
       return;
@@ -124,7 +140,7 @@ class LiveSearchController extends GetxController {
 
     // 优先从房间详情获取主播真实头像（LiveRoomItem.cover 是直播间封面，不是头像）
     var face = item.cover; // fallback: 使用封面
-    var site = Sites.getSite(selectedSiteId.value);
+    var site = Sites.getSite(siteId);
     if (site != null) {
       try {
         var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
@@ -136,11 +152,11 @@ class LiveSearchController extends GetxController {
       }
     }
 
-    DBService.instance.addFollow(
+    await DBService.instance.addFollow(
       FollowUser(
         id: id,
         roomId: item.roomId,
-        siteId: selectedSiteId.value,
+        siteId: siteId,
         userName: item.userName,
         face: face,
         addTime: DateTime.now(),

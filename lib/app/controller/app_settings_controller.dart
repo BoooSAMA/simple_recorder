@@ -189,6 +189,19 @@ class AppSettingsController extends GetxController {
   /// 判断直播间是否被置顶
   bool isFollowPinned(String id) => pinnedFollowIds.contains(id);
 
+  /// 批量添加置顶 ID（导入场景：一次性落盘 + 一次事件通知，
+  /// 避免逐条 toggle 反复重写整个列表；纯新增语义，
+  /// 且不会像 toggle 那样把已存在的置顶误删）
+  Future<void> addPinnedFollowIds(Iterable<String> ids) async {
+    var changed = false;
+    for (final id in ids) {
+      if (pinnedFollowIds.add(id)) changed = true;
+    }
+    if (!changed) return;
+    await savePinnedFollowIds();
+    EventBus.instance.emit(Constant.kPinnedFollowChanged, null);
+  }
+
   /// 切换置顶状态
   Future<void> toggleFollowPin(String id) async {
     if (pinnedFollowIds.contains(id)) {

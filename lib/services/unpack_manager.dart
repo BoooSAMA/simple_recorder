@@ -158,7 +158,8 @@ class UnpackManager extends GetxController {
     var result = <UnpackGroup>[];
     for (var g in scanned) {
       var items = g.files.map((f) {
-        var isUnpacked = File(f.path.replaceAll('.ts', ext)).existsSync();
+        var isUnpacked =
+            File(f.path.replaceFirst(RegExp(r'\.ts$'), ext)).existsSync();
         return UnpackFileItem(
           path: f.path,
           fileName: f.fileName,
@@ -445,8 +446,8 @@ class UnpackManager extends GetxController {
         // 单路：按序显示当前文件（原有行为）
         currentFileIndex.value = i + 1;
         currentFileName.value = file.fileName;
-        final outName = file.fileName.replaceAll(
-            '.ts', Constant.audioFormatExtension(targetFormat));
+        final outName = file.fileName.replaceFirst(
+            RegExp(r'\.ts$'), Constant.audioFormatExtension(targetFormat));
         ffmpegCommand.value = "ffmpeg -i ${file.fileName} → $outName";
         ffmpegStatus.value = "";
         ffmpegSize.value = "";

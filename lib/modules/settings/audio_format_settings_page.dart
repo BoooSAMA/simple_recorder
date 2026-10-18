@@ -29,9 +29,16 @@ class AudioFormatSettingsPage extends StatelessWidget {
               ),
             ),
             Card(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: Constant.kSupportedAudioFormats.map((format) {
+              child: RadioGroup<String>(
+                groupValue: currentFormat,
+                onChanged: (v) {
+                  if (v != null) {
+                    controller.setAudioFormat(v);
+                  }
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: Constant.kSupportedAudioFormats.map((format) {
                   var isSelected = currentFormat == format;
                   return Column(
                     mainAxisSize: MainAxisSize.min,
@@ -76,16 +83,11 @@ class AudioFormatSettingsPage extends StatelessWidget {
                           ),
                         ),
                         value: format,
-                        groupValue: currentFormat,
-                        onChanged: (v) {
-                          if (v != null) {
-                            controller.setAudioFormat(v);
-                          }
-                        },
                       ),
                     ],
                   );
                 }).toList(),
+                ),
               ),
             ),
             const SizedBox(height: 12),

@@ -1127,7 +1127,7 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     return RecordingManager.instance.isRecording(taskId);
   }
 
-  void removeFollow(FollowUser user) async {
+  Future<void> removeFollow(FollowUser user) async {
     var result = await Get.dialog<bool>(
       AlertDialog(
         title: const Text("取消关注"),
@@ -1146,8 +1146,13 @@ class HomeController extends GetxController with WidgetsBindingObserver {
     );
     if (result == true) {
       await RecordingManager.instance.stopRecording(user.id);
-      DBService.instance.deleteFollow(user.id);
-      AppSettingsController.instance.toggleFollowPin(user.id);
+      await DBService.instance.deleteFollow(user.id);
+      // 仅当确实置顶时才取消置顶（toggleFollowPin 是纯切换，
+      // 对未置顶的主播调用反而会把它加进置顶集合）
+      var settings = AppSettingsController.instance;
+      if (settings.isFollowPinned(user.id)) {
+        await settings.toggleFollowPin(user.id);
+      }
       followList.remove(user);
       EventBus.instance.emit(Constant.kUpdateFollow, user.id);
     }

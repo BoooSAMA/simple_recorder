@@ -70,13 +70,14 @@ class GlobalPlayerController extends GetxController {
   final trimSuccess = false.obs;
   final trimmedFileName = ''.obs;
   StreamSubscription<Duration>? _previewSub;
+  StreamSubscription<ProcessingState>? _stateSub;
 
   @override
   void onInit() {
     super.onInit();
     player = AudioPlayer();
     // 播完自动下一首（单曲循环时 LoopMode.one 会自动重播，不会走到 completed）
-    player.processingStateStream.listen((state) {
+    _stateSub = player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed && autoPlay.value) {
         playNext();
       }
@@ -85,6 +86,7 @@ class GlobalPlayerController extends GetxController {
 
   @override
   void onClose() {
+    _stateSub?.cancel();
     _previewSub?.cancel();
     player.dispose();
     super.onClose();

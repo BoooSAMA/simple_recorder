@@ -103,15 +103,19 @@ class Constant {
   }
 
   /// 所有音频文件扩展名列表（用于文件过滤）
-  static List<String> get kAllAudioExtensions =>
-      kSupportedAudioFormats.map(audioFormatExtension).toList();
+  static final List<String> kAllAudioExtensions =
+      List.unmodifiable(kSupportedAudioFormats.map(audioFormatExtension));
+
+  /// 文件名日期解析正则（缓存复用：本函数会被排序比较器高频调用，
+  /// 每次新建 RegExp 会产生大量重复编译开销）
+  static final RegExp _nameDateRegex =
+      RegExp(r'.*_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_');
 
   /// 从文件名解析 `日期 + 开始时间` 键（如 "2026-09-05 22-13"），供
   /// “按文件名日期排序”比较。文件名格式 {owner}_{date}_{start}_{end}[后缀].ext，
   /// 贪婪匹配最后一个日期段，owner 含下划线也安全；格式不符返回 ""。
   static String parseNameDateKey(String fileName) {
-    final m =
-        RegExp(r'.*_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_').firstMatch(fileName);
+    final m = _nameDateRegex.firstMatch(fileName);
     if (m == null) return "";
     return "${m.group(1)} ${m.group(2)}";
   }
