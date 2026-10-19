@@ -690,6 +690,20 @@ class UnpackManager extends GetxController {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                    // 合并后的文件名预览：让用户合并前就知道产物叫什么
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, top: 4),
+                      child: Text(
+                        "→ ${_formatRangeBody(frags[i].owner, frags[i].date, frags[i].earliestStart, frags[i].latestEnd)}_合并${frags[i].files.length}段.ts",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.teal[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     if (i < frags.length - 1)
                       const SizedBox(height: 6),
                   ],
@@ -738,7 +752,8 @@ class UnpackManager extends GetxController {
     for (var frag in fragments) {
       if (!isProcessing.value) break;
       var dir = Directory(frag.files.first.item.path).parent.path;
-      var outputPath = "$dir/${frag.owner}_${frag.date}_${frag.earliestStart}_${frag.latestEnd}_merged.ts";
+      var outputPath =
+          "$dir/${_formatRangeBody(frag.owner, frag.date, frag.earliestStart, frag.latestEnd)}_合并${frag.files.length}段.ts";
       ffmpegCommand.value = "ffmpeg -f concat ×${frag.files.length} → ${outputPath.split('/').last}";
       // 唯一命名：防止回调丢失场景下旧 session 还在读 list 时
       // 下一组覆写同名文件，导致输出混入其他组内容（异常大文件）
@@ -798,7 +813,13 @@ class UnpackManager extends GetxController {
 
   List<_FragmentGroup> _detectFragmentsForGroup(UnpackGroup group) {
     var result = <_FragmentGroup>[];
-    var tsFiles = group.files.where((f) => !f.isRecording && !f.isUnpacked.value).toList();
+    var tsFiles = group.files
+        .where((f) =>
+            !f.isRecording &&
+            !f.isUnpacked.value &&
+            // 合并产物本身不是碎片，不能被再次合并
+            !isMergedOutput(f.fileName))
+        .toList();
     if (tsFiles.length < 2) return result;
     var parsed = <_ParsedFile>[];
     for (var f in tsFiles) {
@@ -868,7 +889,8 @@ class UnpackManager extends GetxController {
     for (var group in allFragments) {
       if (!isProcessing.value) break;
       var dir = Directory(group.files.first.item.path).parent.path;
-      var outputPath = "$dir/${group.owner}_${group.date}_${group.earliestStart}_${group.latestEnd}_merged.ts";
+      var outputPath =
+          "$dir/${_formatRangeBody(group.owner, group.date, group.earliestStart, group.latestEnd)}_合并${group.files.length}段.ts";
       ffmpegCommand.value = "ffmpeg -f concat ×${group.files.length} → ${outputPath.split('/').last}";
       // 唯一命名：防止回调丢失场景下旧 session 还在读 list 时
       // 下一组覆写同名文件，导致输出混入其他组内容（异常大文件）
@@ -941,7 +963,7 @@ class UnpackManager extends GetxController {
     var owner = selectedOwnerName ?? "unknown";
     var dir = Directory(files.first.path).parent.path;
     var nameParts = _parseTimeRange(files, owner);
-    var outputPath = "$dir/${nameParts}_merged.ts";
+    var outputPath = "$dir/${nameParts}_合并${files.length}段.ts";
     ffmpegCommand.value = "ffmpeg -f concat ×${files.length} → ${outputPath.split('/').last}";
     isProcessing.value = true;
     final myGen = _beginBatch();
@@ -1007,40 +1029,74 @@ class UnpackManager extends GetxController {
     }
   }
 
+  /// 生成合并产物的名字主体：`{owner}_{开始日期}_{开始时间}~{结束时间}`
+  ///
+  /// 用 `~` 表示时间区间，比下划线更直观（一眼看出是一段连续时间）；
+  /// 跨天/跨午夜时给结束时间加 `次日` / `+N天` 前缀，避免出现
+  /// `23-50~01-30` 这种看起来"倒着走"的名字。
+  String _formatRangeBody(
+    String owner,
+    String date,
+    String start,
+    String end, {
+    String? endDate,
+  }) {
+    var label = end;
+    if (endDate != null && endDate != date) {
+      int days;
+      try {
+        days =
+            DateTime.parse(endDate).difference(DateTime.parse(date)).inDays;
+      } catch (_) {
+        days = 1;
+      }
+      label = days == 1 ? "次日$end" : "+$days天$end";
+    } else if (end.compareTo(start) < 0) {
+      // 同一天内结束时间早于开始 → 跨过了午夜
+      label = "次日$end";
+    }
+    return "${owner}_${date}_$start~$label";
+  }
+
+  /// 从选中的多个文件推导合并产物的名字主体（支持跨天选择）
   String _parseTimeRange(List<UnpackFileItem> files, String owner) {
-    var earliestStart = "99-99";
-    var latestEnd = "00-00";
-    var date = "";
-    var parsedAny = false;
+    ({String date, String start, String end})? first;
+    ({String date, String start, String end})? last;
     for (var f in files) {
       var t = _parseNameTime(f.fileName);
       if (t == null) continue;
-      parsedAny = true;
-      // 日期取最早开始那天的，避免跨天合并时日期错位
-      if (t.start.compareTo(earliestStart) < 0) {
-        earliestStart = t.start;
-        date = t.date;
+      // 按「日期 + 时间」整体比较，跨天时不会把 00-30 误判成最早
+      if (first == null ||
+          '${t.date} ${t.start}'.compareTo('${first.date} ${first.start}') <
+              0) {
+        first = t;
       }
-      if (t.end.compareTo(latestEnd) > 0) latestEnd = t.end;
+      if (last == null ||
+          '${t.date} ${t.end}'.compareTo('${last.date} ${last.end}') > 0) {
+        last = t;
+      }
     }
-    if (!parsedAny) {
+    if (first == null) {
       // 兜底：全部解析失败时用最早文件的修改时间，绝不输出 99-99_00-00
-      // (${t}_ 的花括号语义必需，lint 此处误报)
+      String d, t;
       try {
         var dt = File(files.first.path).lastModifiedSync();
-        var d = _twoDigitsDate(dt);
-        var t = _twoDigitsTime(dt);
-        // ignore: unnecessary_brace_in_string_interps
-        return "${owner}_${d}_${t}_${t}";
+        d = _twoDigitsDate(dt);
+        t = _twoDigitsTime(dt);
       } catch (_) {
         var now = DateTime.now();
-        var d = _twoDigitsDate(now);
-        var t = _twoDigitsTime(now);
-        // ignore: unnecessary_brace_in_string_interps
-        return "${owner}_${d}_${t}_${t}";
+        d = _twoDigitsDate(now);
+        t = _twoDigitsTime(now);
       }
+      return "${owner}_${d}_$t~$t";
     }
-    return "${owner}_${date}_${earliestStart}_$latestEnd";
+    return _formatRangeBody(
+      owner,
+      first.date,
+      first.start,
+      last!.end,
+      endDate: last.date,
+    );
   }
 
   String _twoDigitsDate(DateTime dt) =>
@@ -1049,15 +1105,31 @@ class UnpackManager extends GetxController {
   String _twoDigitsTime(DateTime dt) =>
       "${dt.hour.toString().padLeft(2, '0')}-${dt.minute.toString().padLeft(2, '0')}";
 
+  /// 合并产物命名：`{owner}_{date}_{start}~{end}_合并{N}段.ts`
+  /// （`~` 表示时间区间，`合并N段` 说明由几段拼成）
+  static final RegExp _mergedOutputRegex =
+      RegExp(r'_合并\d+段\.ts$|_merged\.ts$');
+
+  /// 是否为合并产物（不能再当作碎片源二次合并）
+  static bool isMergedOutput(String fileName) =>
+      _mergedOutputRegex.hasMatch(fileName);
+
+  /// 新格式：`{owner}_{date}_{start}~{end}_合并{N}段.ts`
+  /// 跨天结束时间写作 `~次日HH-mm` 或 `~+N天HH-mm`
+  static final RegExp _newNameRegex = RegExp(
+      r'_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})~(?:(?:次日|\+\d+天))?(\d{2}-\d{2})(?:_合并\d+段)?\.ts$');
+
+  /// 旧格式（兼容历史文件）：`{owner}_{date}_{start}_{end}[_merged][_interrupted].ts`
+  static final RegExp _legacyNameRegex = RegExp(
+      r'_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_(\d{2}-\d{2})(?:_merged)?(?:_interrupted)?\.ts$');
+
   /// 从 TS 文件名解析时间信息（从右往左匹配，owner 含下划线也安全）
   ///
-  /// 文件名格式 {owner}_{date}_{start}_{end}[_merged][_interrupted].ts，
   /// 返回 (date, start, end)，如 ("2026-09-05", "22-13", "22-24")；
   /// 格式不符返回 null。
   ({String date, String start, String end})? _parseNameTime(String fileName) {
-    var m = RegExp(
-      r'_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_(\d{2}-\d{2})(?:_merged)?(?:_interrupted)?\.ts$',
-    ).firstMatch(fileName);
+    var m = _newNameRegex.firstMatch(fileName) ??
+        _legacyNameRegex.firstMatch(fileName);
     if (m == null) return null;
     return (date: m.group(1)!, start: m.group(2)!, end: m.group(3)!);
   }
@@ -1199,6 +1271,7 @@ class UnpackManager extends GetxController {
         checking = false;
       }
     });
+    var completedOk = false;
     try {
       await FFmpegKit.executeWithArgumentsAsync(
         ['-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-y', outputPath],
@@ -1206,7 +1279,24 @@ class UnpackManager extends GetxController {
           sizeTimer?.cancel();
           watchdog?.cancel();
           var returnCode = await session.getReturnCode();
-          finish(ReturnCode.isSuccess(returnCode));
+          var ok = ReturnCode.isSuccess(returnCode);
+          if (!ok) {
+            // 失败必须留下可诊断的信息（返回码 + 日志尾部），否则
+            // 用户只能看到一句"合并失败"
+            var tail = "";
+            try {
+              final logs = await session.getAllLogsAsString();
+              if (logs != null && logs.isNotEmpty) {
+                final lines = logs.split('\n');
+                tail = lines
+                    .sublist(max(0, lines.length - 12))
+                    .join('\n');
+              }
+            } catch (_) {}
+            Log.logPrint(
+                "concat 失败 returnCode=$returnCode → $outputPath\n$tail");
+          }
+          finish(ok);
         },
         (log) {
           var msg = log.getMessage();
@@ -1221,19 +1311,33 @@ class UnpackManager extends GetxController {
           }
         },
       );
+      // 重要：executeWithArgumentsAsync 的文档语义是"提交即返回"
+      // （Android 端 asyncFFmpegExecute 后立刻 result.success），并不等待
+      // 任务完成。必须在这里等 completer 真正结束，否则下面的 finally
+      // 会在 FFmpeg 打开 concat list 之前就把它删掉 —— 这正是
+      // "每次合并都失败"的根因。
+      completedOk = await completer.future;
+      return completedOk;
     } catch (e) {
       Log.logPrint("FFmpeg concat 执行失败: $e");
       finish(false);
+      return false;
     } finally {
       sizeTimer?.cancel();
       watchdog.cancel();
-      // 清理本次唯一的 list 文件（防残留字符累积）
+      // 清理本次唯一的 list 文件（此时任务已真正结束，输入已读完）
       try {
         final lf = File(listPath);
         if (lf.existsSync()) lf.deleteSync();
       } catch (_) {}
+      // 失败时清理 0 字节残留输出，避免给用户留下一堆空文件
+      if (!completedOk) {
+        try {
+          final of = File(outputPath);
+          if (of.existsSync() && of.lengthSync() == 0) of.deleteSync();
+        } catch (_) {}
+      }
     }
-    return completer.future;
   }
 
   /// 源文件总大小（lengthSync 求和，毫秒级，比 FFprobe 探测快得多）

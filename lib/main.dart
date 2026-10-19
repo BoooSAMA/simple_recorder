@@ -80,11 +80,12 @@ void _markInterruptedFiles() {
     var rootDir = Directory(savePath);
     if (!await rootDir.exists()) return;
 
-    // 已完成格式: {name}_{date}_{start}_{end}[_merged].ts
-    // 注意：合并产物 {name}_{date}_{start}_{end}_merged.ts 也算"已完成"，
-    // 必须一起跳过，否则每次启动都会把合并好的文件误标为中断文件
-    final completedRegex =
-        RegExp(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_\d{2}-\d{2}(?:_merged)?\.ts$');
+    // 已完成格式:
+    //   新: {name}_{date}_{start}~{end}_合并{N}段.ts
+    //   旧: {name}_{date}_{start}_{end}[_merged].ts
+    // 两种都必须跳过，否则每次启动都会把合并好的文件误标为中断文件
+    final completedRegex = RegExp(
+        r'(?:_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}~[^/]*?_合并\d+段|_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_\d{2}-\d{2}(?:_merged)?)\.ts$');
     // App 创建的文件含日期时间
     final appFileRegex = RegExp(r'_\d{4}-\d{2}-\d{2}_\d{2}');
 

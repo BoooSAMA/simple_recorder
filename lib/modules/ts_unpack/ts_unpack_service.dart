@@ -150,9 +150,10 @@ class TsUnpackService {
       });
     }
 
-    await FFmpegKit.executeWithArgumentsAsync(
-      args,
-      (session) async {
+    try {
+      await FFmpegKit.executeWithArgumentsAsync(
+        args,
+        (session) async {
         progressTimer?.cancel();
         watchdog?.cancel();
         var returnCode = await session.getReturnCode();
@@ -228,6 +229,15 @@ class TsUnpackService {
         }
       },
     );
+    } catch (e) {
+      // 提交阶段异常（session 创建 / 线程池提交失败）：兜底返回，
+      // 否则 completer 永不完成会让调用方永久挂起
+      progressTimer?.cancel();
+      watchdog?.cancel();
+      Log.logPrint("解包提交失败: $e");
+      return UnpackResult(
+          success: false, path: tsPath, error: "解包启动失败: $e");
+    }
 
     return completer.future;
   }
