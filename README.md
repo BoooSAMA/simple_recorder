@@ -21,11 +21,26 @@
 
 ## 快速上手
 
-### 第一步：首次安装
+### 第一步：安装
+
+#### 方式 A：直接下载 APK（推荐普通用户）
+
+前往 **[Releases](https://github.com/BoooSAMA/simple_recorder/releases)** 下载最新版：
+
+| 设备类型 | 下载文件 | 体积 |
+|---|---|---|
+| 绝大多数安卓手机（2018 年后，arm64） | `simple_recorder-<版本>-arm64-v8a.apk` | 约 46 MB |
+| 老旧 32 位设备（armeabi-v7a） | `simple_recorder-<版本>-armeabi-v7a.apk` | 约 64 MB |
+
+- **系统要求**：Android 7.0（API 24）及以上
+- 下载后直接点击安装，首次需在浏览器/文件管理器中允许「安装未知应用」
+- 若之前安装过调试签名版本，请先**卸载旧版**再安装，否则会提示「签名不一致」
+
+#### 方式 B：从源码构建（开发者）
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your/simple_recorder.git
+git clone https://github.com/BoooSAMA/simple_recorder.git
 cd simple_recorder
 
 # 2. 获取依赖
@@ -37,9 +52,8 @@ dart run build_runner build --delete-conflicting-outputs
 # 4. 运行
 flutter run
 
-# 5. 打包apk(可选)
-flutter apk
-
+# 5. 打包 APK（可选，按 ABI 拆分得到最小安装包）
+flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
 ```
 
 > Android 首次启动会自动请求"管理所有文件"权限（Android 11+）和"通知"权限（Android 13+），请允许以确保前台录制正常。
