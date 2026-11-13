@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <!-- 网络权限：直播状态检测、搜索、拉流（debug/profile manifest 有，release 必须在 main 声明） -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- 存储权限 (Android 12 及以下) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
