@@ -196,11 +196,6 @@ class RecordingSession {
       return;
     }
 
-    var now = DateTime.now();
-    var timestamp =
-        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}"
-        "_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}";
-
     var saveDir = await _getWritableSaveDir();
 
     if (AppSettingsController.instance.autoSaveToFolder.value) {
@@ -211,7 +206,7 @@ class RecordingSession {
       }
     }
 
-    _outputPath = "$saveDir/${userName}_$timestamp.ts";
+    _outputPath = _newOutputPath(saveDir);
     _startTime = DateTime.now();
     _discardRequested = false;
     _retries = 0;
@@ -283,7 +278,37 @@ class RecordingSession {
     });
   }
 
+  /// 生成录制文件路径：`{userName}_{yyyy-MM-dd}_{HH-mm}.ts`
+  /// （时间戳精确到分钟；收尾时会补上结束时间）
+  String _newOutputPath(String dir) {
+    var now = DateTime.now();
+    var datePart =
+        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    var timePart =
+        "${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}";
+    return "$dir/${userName}_${datePart}_$timePart.ts";
+  }
+
+  /// 收尾当前正在写的文件：补上结束时间并按设置入队自动解包。
+  ///
+  /// 停滞重启 / 断流重试这两条路径不会走 `_onFinished`，以前它们直接
+  /// `start()` 开新文件，旧文件就永远停留在 `{user}_{date}_{start}.ts`
+  /// ——这就是"只有头没有尾"的命名，也是大量碎片的来源。
+  Future<void> _finalizeCurrentFile() async {
+    if (_startTime == null || _outputPath.isEmpty) return;
+    if (!File(_outputPath).existsSync()) return;
+    await _renameFileWithEndTime();
+    if (_outputPath.endsWith('.ts') &&
+        AppSettingsController.instance.autoUnpackEnabled.value) {
+      await _autoUnpackToTargetFormat();
+    }
+  }
+
   Future<void> _startFFmpegSession(String playUrl) async {
+    // 每次（重新）启动新一轮录制都先清空上一轮的错误：
+    // 断流重试/停滞重启一旦成功，旧错误就与当前状态无关，
+    // 否则卡片会一直显示「录制异常」而实际文件仍在正常增长。
+    lastError.value = "";
     var args = <String>['-y'];
 
     var headers = _getHeaders?.call();
@@ -379,6 +404,17 @@ class RecordingSession {
         _onFinished();
         return;
       }
+      // 断流重试前必须先给已录内容收尾：
+      // 下面重新执行 FFmpeg 时会带 -y 写同一个 _outputPath，
+      // 不先重命名就会把已经录到的内容整个覆盖掉（数据丢失）。
+      await _finalizeCurrentFile();
+
+      // 重试视为新片段：新的开始时间 + 新文件名。
+      // 不能继续写已重命名的旧文件，否则文件名里的结束时间
+      // 与后续实际写入内容不符。
+      _outputPath = _newOutputPath(File(_outputPath).parent.path);
+      _startTime = DateTime.now();
+
       await _onRefreshPlayUrl?.call();
       // 使用刷新后的 URL 重试，而非旧的 playUrl 参数
       var freshUrl = _getPlayUrl?.call() ?? playUrl;
@@ -506,6 +542,8 @@ class RecordingSession {
   /// 停滞检测运行时状态
   int _stallRestartCount = 0;
   int _lastCheckedBytes = -1;
+  /// 连续多少次检测文件大小完全无变化（用于避免单次卡顿误判停滞）
+  int _stallNoGrowthStreak = 0;
 
   /// FFmpeg session 代际编号，每次 start() 递增。
   /// 旧 FFmpeg 回调检查此值，如果不再匹配则静默放弃处理，
@@ -532,6 +570,7 @@ class RecordingSession {
     _finished = true;
     _stallRestartCount = 0;
     _lastCheckedBytes = -1;
+    _stallNoGrowthStreak = 0;
     if (_startTime != null && _outputPath.isNotEmpty && !_discardRequested) {
       await _renameFileWithEndTime();
       // 成功完成录音后，按“自动解包”开关决定是否解包 TS → 目标格式
@@ -615,7 +654,11 @@ class RecordingSession {
         var returnCode = await session.getReturnCode();
         if (ReturnCode.isSuccess(returnCode)) {
           Log.logPrint("自动解包成功: $outputPath");
-          _outputPath = outputPath;
+          // 只在当前会话仍指向这个 TS 时才更新 _outputPath。
+          // 切片/停滞重启会立刻开始新文件，异步完成解包时
+          // _outputPath 已指向新 TS，不能被旧 m4a 覆盖，
+          // 否则后续重命名/停止会操作到错误的文件。
+          if (_outputPath == tsPath) _outputPath = outputPath;
 
           // 解包成功后，按设置决定是否删除 TS 文件
           if (AppSettingsController.instance.deleteTsAfterUnpack.value) {
@@ -687,15 +730,22 @@ class RecordingSession {
     } catch (_) {}
     fileSize.value = _formatBytes(bytes);
 
-    // 无增长判定：与上次检测大小相同，且已超过停滞阈值时间
-    final noGrowth =
-        bytes == _lastCheckedBytes && _seconds > _stallThresholdSeconds;
-
-    // 文件恢复增长：重置停滞状态
+    // 无增长判定：连续 2 次检测（默认间隔 30s）大小完全相同才判定停滞。
+    // 只比一次容易把主播短暂卡顿/缓冲误判成断流，进而反复重启、
+    // 切出一堆几秒长的小碎片。
     if (bytes > _lastCheckedBytes) {
+      // 文件恢复增长：重置停滞状态，并清除此前的停滞/断流告警。
+      // 否则自动重启成功后卡片会一直停留在「录制异常」。
       _stallRestartCount = 0;
+      _stallNoGrowthStreak = 0;
+      if (lastError.value.isNotEmpty) lastError.value = "";
+    } else if (_lastCheckedBytes >= 0 && bytes == _lastCheckedBytes) {
+      _stallNoGrowthStreak++;
     }
     _lastCheckedBytes = bytes;
+
+    final noGrowth =
+        _stallNoGrowthStreak >= 2 && _seconds > _stallThresholdSeconds;
 
     if (noGrowth) {
       _handleStall();
@@ -743,11 +793,26 @@ class RecordingSession {
     isRecording.value = false;
     // 释放引用计数（让 start() 重新获取，保持平衡）
     _releaseResources();
-    // 删除无价值的 0 字节旧文件
+    // 停滞重启前处理旧文件：
+    // - 极小（<64KB，约 1~2 秒音频）说明停滞前几乎没录到内容，直接删除，
+    //   避免产生大量无意义的小碎片；
+    // - 其余补上结束时间并入队解包。以前这里直接 start()，旧文件会永远
+    //   停留在 "{user}_{date}_{start}.ts"，既没有结束时间也不会自动解包，
+    //   这就是"只有头没有尾"的来源。
+    var oldFile = File(_outputPath);
+    var oldSize = 0;
     try {
-      var f = File(_outputPath);
-      if (f.existsSync() && f.lengthSync() == 0) f.deleteSync();
+      oldSize = oldFile.existsSync() ? oldFile.lengthSync() : 0;
     } catch (_) {}
+    if (oldSize < 64 * 1024) {
+      try {
+        if (oldFile.existsSync()) oldFile.deleteSync();
+      } catch (_) {}
+      _startTime = null;
+    } else {
+      await _finalizeCurrentFile();
+    }
+    _stallNoGrowthStreak = 0;
     // 刷新播放地址（即使刷新失败也继续尝试重启，旧 URL 可能仍有效）
     try {
       await _onRefreshPlayUrl?.call();

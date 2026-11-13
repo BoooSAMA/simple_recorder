@@ -46,3 +46,7 @@ app.*.map.json
 
 # Project-specific
 AGENTS.md
+
+# Signing (never commit)
+android/key.properties
+android/app/release.jks

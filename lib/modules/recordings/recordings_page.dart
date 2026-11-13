@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'package:simple_recorder/app/design_tokens.dart';
 import 'package:simple_recorder/modules/recordings/floating_audio_player.dart';
 import 'package:simple_recorder/modules/recordings/recordings_controller.dart';
 import 'package:simple_recorder/routes/route_path.dart';
 import 'package:simple_recorder/services/global_player_controller.dart';
+import 'package:simple_recorder/widgets/icon_tile.dart';
+import 'package:simple_recorder/widgets/status_badge.dart';
 
 class RecordingsPage extends StatelessWidget {
   const RecordingsPage({super.key});
@@ -94,26 +97,15 @@ class RecordingsPage extends StatelessWidget {
       ),
       body: Obx(() {
         if (!controller.hasSavePath.value) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.folder_off_outlined,
-                      size: 64, color: theme.colorScheme.outline),
-                  const SizedBox(height: 16),
-                  Text("请先设置音频存储路径",
-                      style: theme.textTheme.titleMedium?.copyWith(
-                          color: theme.colorScheme.outline)),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: () => Get.toNamed(RoutePath.kAudioSettings),
-                    icon: const Icon(Icons.settings, size: 18),
-                    label: const Text("前往设置"),
-                  ),
-                ],
-              ),
+          return _buildPlaceholder(
+            context,
+            icon: Icons.folder_off_outlined,
+            title: "请先设置音频存储路径",
+            subtitle: "录音会按主播分文件夹保存到你选择的位置",
+            action: FilledButton.icon(
+              onPressed: () => Get.toNamed(RoutePath.kAudioSettings),
+              icon: const Icon(Icons.settings, size: 18),
+              label: const Text("前往设置"),
             ),
           );
         }
@@ -123,18 +115,11 @@ class RecordingsPage extends StatelessWidget {
         }
 
         if (controller.groups.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.music_note_outlined,
-                    size: 64, color: theme.colorScheme.outline),
-                const SizedBox(height: 16),
-                Text("没有发现录音文件",
-                    style: theme.textTheme.titleMedium?.copyWith(
-                        color: theme.colorScheme.outline)),
-              ],
-            ),
+          return _buildPlaceholder(
+            context,
+            icon: Icons.music_note_outlined,
+            title: "没有发现录音文件",
+            subtitle: "录制完成或解包后的音频会出现在这里",
           );
         }
 
@@ -151,11 +136,98 @@ class RecordingsPage extends StatelessWidget {
     );
   }
 
+  /// 统一的空状态 / 未配置状态
+  Widget _buildPlaceholder(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? action,
+  }) {
+    var theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: AppSurface.chip(theme.colorScheme),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                icon,
+                size: 36,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpace.xl),
+            Text(title, style: theme.textTheme.titleMedium),
+            if (subtitle != null) ...[
+              const SizedBox(height: AppSpace.xs),
+              Text(
+                subtitle,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: AppSpace.xl),
+              action,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 顶部工具条：文件排序筛选 + 一键折叠/展开所有主播文件夹
   Widget _buildToolbar(BuildContext context, RecordingsController controller) {
     var theme = Theme.of(context);
+    final chipFg = theme.colorScheme.onSurfaceVariant;
+
+    Widget chip({
+      required IconData icon,
+      required Widget label,
+      VoidCallback? onTap,
+      GestureTapDownCallback? onTapDown,
+    }) {
+      return Material(
+        color: AppSurface.chip(theme.colorScheme),
+        shape: RoundedRectangleBorder(
+          borderRadius: AppRadius.rPill,
+          side: BorderSide(
+            color: AppSurface.outline(theme.colorScheme),
+            width: 0.6,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          onTapDown: onTapDown,
+          borderRadius: AppRadius.rPill,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: chipFg),
+                const SizedBox(width: 5),
+                label,
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: theme.dividerColor, width: 0.5),
@@ -164,33 +236,23 @@ class RecordingsPage extends StatelessWidget {
       child: Row(
         children: [
           // 排序筛选
-          InkWell(
+          chip(
+            icon: Icons.sort,
             onTapDown: (details) =>
                 _showSortMenu(context, controller, details.globalPosition),
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.sort, size: 18),
-                  const SizedBox(width: 4),
-                  Obx(() => Text(
-                        _sortModeLabel(controller.sortMode.value),
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface
-                                .withAlpha(150)),
-                      )),
-                ],
+            label: Obx(
+              () => Text(
+                _sortModeLabel(controller.sortMode.value),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: chipFg,
+                  fontSize: 12,
+                ),
               ),
             ),
           ),
           const Spacer(),
           // 一键收起/展开所有主播文件夹
           Obx(() {
-            // 订阅所有分组的展开状态，驱动按钮图标切换
             var anyExpanded = false;
             for (var g in controller.groups) {
               if (g.isExpanded.value) {
@@ -198,28 +260,14 @@ class RecordingsPage extends StatelessWidget {
                 break;
               }
             }
-            return InkWell(
+            return chip(
+              icon: anyExpanded ? Icons.unfold_less : Icons.unfold_more,
               onTap: () => controller.toggleCollapseAll(),
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      anyExpanded ? Icons.unfold_less : Icons.unfold_more,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      anyExpanded ? "全部收起" : "全部展开",
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurface
-                              .withAlpha(150)),
-                    ),
-                  ],
+              label: Text(
+                anyExpanded ? "全部收起" : "全部展开",
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: chipFg,
+                  fontSize: 12,
                 ),
               ),
             );
@@ -231,13 +279,26 @@ class RecordingsPage extends StatelessWidget {
 
   /// 弹出排序方式选择菜单
   Future<void> _showSortMenu(
-      BuildContext context, RecordingsController controller, Offset position) async {
+    BuildContext context,
+    RecordingsController controller,
+    Offset position,
+  ) async {
     var theme = Theme.of(context);
-    const labels = ['创建时间降序（最新在前）', '创建时间升序（最旧在前）', '主播名', '文件名日期降序（最新在前）', '文件名日期升序（最旧在前）'];
+    const labels = [
+      '创建时间降序（最新在前）',
+      '创建时间升序（最旧在前）',
+      '主播名',
+      '文件名日期降序（最新在前）',
+      '文件名日期升序（最旧在前）',
+    ];
     final value = await showMenu<int>(
       context: context,
       position: RelativeRect.fromLTRB(
-          position.dx, position.dy, position.dx, position.dy),
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
+      ),
       items: [
         for (var m = 0; m < labels.length; m++)
           PopupMenuItem(
@@ -295,72 +356,84 @@ class RecordingsPage extends StatelessWidget {
             Obx(() {
               var isExpanded = group.isExpanded.value;
               var isSelecting = controller.isSelectMode.value;
-              var allSelected = isSelecting &&
+              var allSelected =
+                  isSelecting &&
                   group.items.isNotEmpty &&
                   group.items.every((item) => item.isSelected.value);
-              return InkWell(
-                onTap: () => controller.toggleGroup(groupIndex),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelecting && allSelected
-                        ? theme.colorScheme.primary.withAlpha(12)
-                        : theme.colorScheme.surfaceContainerHighest
-                            .withAlpha(60),
-                    border: Border(
-                      bottom: BorderSide(
-                          color: theme.dividerColor, width: 0.5),
+              return Material(
+                color: isSelecting && allSelected
+                    ? theme.colorScheme.primary.withAlpha(18)
+                    : AppSurface.header(theme.colorScheme),
+                child: InkWell(
+                  onTap: () => controller.toggleGroup(groupIndex),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.lg,
+                      vertical: 10,
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      if (isSelecting)
-                        GestureDetector(
-                          onTap: () =>
-                              controller.toggleGroupSelection(groupIndex),
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: Icon(
-                              allSelected
-                                  ? Icons.check_box
-                                  : Icons.check_box_outline_blank,
-                              size: 20,
-                              color: allSelected
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurface
-                                      .withAlpha(100),
-                            ),
-                          ),
-                        )
-                      else
-                        const Icon(Icons.folder_outlined, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          group.folderName,
-                          style: theme.textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: theme.dividerColor,
+                          width: 0.5,
                         ),
                       ),
-                      Text(
-                        "${group.count}个文件",
-                        style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withAlpha(150)),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        isExpanded
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                        size: 20,
-                        color: theme.colorScheme.onSurface.withAlpha(120),
-                      ),
-                    ],
+                    ),
+                    child: Row(
+                      children: [
+                        if (isSelecting)
+                          GestureDetector(
+                            onTap: () =>
+                                controller.toggleGroupSelection(groupIndex),
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: Icon(
+                                allSelected
+                                    ? Icons.check_box
+                                    : Icons.check_box_outline_blank,
+                                size: 20,
+                                color: allSelected
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          )
+                        else
+                          Icon(
+                            Icons.folder_rounded,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                        const SizedBox(width: AppSpace.sm),
+                        Expanded(
+                          child: Text(
+                            group.folderName,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        StatusBadge(
+                          "${group.count} 个",
+                          tone: StatusTone.neutral,
+                        ),
+                        const SizedBox(width: AppSpace.sm),
+                        AnimatedRotation(
+                          turns: isExpanded ? 0.5 : 0,
+                          duration: AppMotion.normal,
+                          curve: AppMotion.standard,
+                          child: Icon(
+                            Icons.expand_more,
+                            size: 20,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -376,7 +449,13 @@ class RecordingsPage extends StatelessWidget {
                   var i = entry.key;
                   var item = entry.value;
                   return _buildFileRow(
-                      context, controller, item, i, items.length, items);
+                    context,
+                    controller,
+                    item,
+                    i,
+                    items.length,
+                    items,
+                  );
                 }).toList(),
               );
             }),
@@ -386,10 +465,17 @@ class RecordingsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildFileRow(BuildContext context, RecordingsController controller,
-      RecordingItem item, int index, int total, List<RecordingItem> siblings) {
+  Widget _buildFileRow(
+    BuildContext context,
+    RecordingsController controller,
+    RecordingItem item,
+    int index,
+    int total,
+    List<RecordingItem> siblings,
+  ) {
     var theme = Theme.of(context);
-    return InkWell(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         if (controller.isSelectMode.value) {
           controller.toggleSelection(item);
@@ -398,36 +484,46 @@ class RecordingsPage extends StatelessWidget {
           GlobalPlayerController.instance.playFile(
             item.path,
             item.fileName,
-            queue: siblings
-                .map((e) => QueueTrack(e.path, e.fileName))
-                .toList(),
+            queue: siblings.map((e) => QueueTrack(e.path, e.fileName)).toList(),
             index: index,
           );
         }
       },
       child: Obx(() {
+        var isSelecting = controller.isSelectMode.value;
         var isSelected = item.isSelected.value;
         var isCurrentlyPlaying =
             GlobalPlayerController.instance.currentPath.value == item.path;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+
+        final rowColor = isCurrentlyPlaying
+            ? theme.colorScheme.primary.withAlpha(12)
+            : isSelecting && isSelected
+            ? theme.colorScheme.primary.withAlpha(15)
+            : Colors.transparent;
+
+        return AnimatedContainer(
+          duration: AppMotion.fast,
+          curve: AppMotion.standard,
+          padding: const EdgeInsets.fromLTRB(13, 8, 16, 8),
           decoration: BoxDecoration(
-            color: isCurrentlyPlaying
-                ? theme.colorScheme.primary.withAlpha(20)
-                : controller.isSelectMode.value && isSelected
-                    ? theme.colorScheme.primary.withAlpha(15)
-                    : null,
-            border: index < total - 1
-                ? Border(
-                    bottom: BorderSide(
-                        color: theme.dividerColor, width: 0.3))
-                : null,
+            color: rowColor,
+            border: Border(
+              left: BorderSide(
+                color: isCurrentlyPlaying
+                    ? theme.colorScheme.primary
+                    : Colors.transparent,
+                width: 3,
+              ),
+              bottom: index < total - 1
+                  ? BorderSide(color: theme.dividerColor, width: 0.3)
+                  : BorderSide.none,
+            ),
           ),
           child: Row(
             children: [
-              if (controller.isSelectMode.value)
+              if (isSelecting)
                 Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.only(right: 10),
                   child: Icon(
                     isSelected
                         ? Icons.check_box
@@ -435,12 +531,21 @@ class RecordingsPage extends StatelessWidget {
                     size: 20,
                     color: isSelected
                         ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurface.withAlpha(100),
+                        : theme.colorScheme.onSurfaceVariant,
                   ),
                 )
               else
-                const Icon(Icons.audiotrack, size: 18, color: Colors.grey),
-              const SizedBox(width: 10),
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: AppIconTile(
+                    icon: Icons.graphic_eq_rounded,
+                    size: 28,
+                    iconSize: 16,
+                    color: isCurrentlyPlaying
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -448,8 +553,13 @@ class RecordingsPage extends StatelessWidget {
                   children: [
                     Text(
                       item.fileName,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(fontWeight: FontWeight.w500),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: isCurrentlyPlaying
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -460,32 +570,29 @@ class RecordingsPage extends StatelessWidget {
                       if (dur.isNotEmpty) info += " · $dur";
                       return Text(
                         info,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                            color: theme.colorScheme.onSurface
-                                .withAlpha(100)),
+                          fontSize: 11.5,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       );
                     }),
                   ],
                 ),
               ),
-              if (!controller.isSelectMode.value)
+              if (!isSelecting)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Obx(() {
-                    var isPlaying =
-                        GlobalPlayerController.instance.currentPath.value ==
-                            item.path;
-                    return Icon(
-                      isPlaying
-                          ? Icons.play_circle
-                          : Icons.play_circle_outline,
-                      size: 18,
-                      color: isPlaying
-                          ? theme.colorScheme.primary
-                          : Colors.blue,
-                    );
-                  }),
+                  child: Icon(
+                    isCurrentlyPlaying
+                        ? Icons.pause_circle_filled_rounded
+                        : Icons.play_circle_outline_rounded,
+                    size: 22,
+                    color: isCurrentlyPlaying
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
             ],
           ),
@@ -495,21 +602,36 @@ class RecordingsPage extends StatelessWidget {
   }
 
   Widget _buildSummaryBar(
-      BuildContext context, RecordingsController controller) {
+    BuildContext context,
+    RecordingsController controller,
+  ) {
     var theme = Theme.of(context);
     var bottomInset = MediaQuery.of(context).padding.bottom;
+    final strong = TextStyle(
+      fontWeight: FontWeight.w600,
+      color: theme.colorScheme.onSurface,
+    );
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(16, 10, 16, 10 + bottomInset),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border(
-            top: BorderSide(color: theme.dividerColor, width: 0.5)),
+        border: Border(top: BorderSide(color: theme.dividerColor, width: 0.5)),
       ),
-      child: Text(
-        "共 ${controller.totalFolders} 个主播，${controller.totalFiles} 个录音文件",
+      child: Text.rich(
+        TextSpan(
+          children: [
+            const TextSpan(text: "共 "),
+            TextSpan(text: "${controller.totalFolders}", style: strong),
+            const TextSpan(text: " 个主播 · "),
+            TextSpan(text: "${controller.totalFiles}", style: strong),
+            const TextSpan(text: " 个录音文件"),
+          ],
+        ),
         style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurface.withAlpha(150)),
+          color: theme.colorScheme.onSurfaceVariant,
+          fontSize: 11.5,
+        ),
         textAlign: TextAlign.center,
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -63,10 +64,15 @@ void main() async {
   initCoreLog();
 
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    systemNavigationBarColor: Colors.transparent,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      // 关闭系统给导航栏叠加的对比度遮罩，避免深色主题下出现一条纯黑边
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
 
   runApp(const MyApp());
 }
@@ -85,7 +91,8 @@ void _markInterruptedFiles() {
     //   旧: {name}_{date}_{start}_{end}[_merged].ts
     // 两种都必须跳过，否则每次启动都会把合并好的文件误标为中断文件
     final completedRegex = RegExp(
-        r'(?:_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}~[^/]*?_合并\d+段|_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_\d{2}-\d{2}(?:_merged)?)\.ts$');
+      r'(?:_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}~[^/]*?_合并\d+段|_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}_\d{2}-\d{2}(?:_merged)?)\.ts$',
+    );
     // App 创建的文件含日期时间
     final appFileRegex = RegExp(r'_\d{4}-\d{2}-\d{2}_\d{2}');
 
@@ -108,7 +115,9 @@ void _markInterruptedFiles() {
         var endMin = lastModified.minute.toString().padLeft(2, '0');
         // 只替换结尾的 .ts，避免路径中其他 ".ts" 子串（如目录名）被误替换
         var newPath = entity.path.replaceFirst(
-            RegExp(r'\.ts$'), '_$endHour-${endMin}_interrupted.ts');
+          RegExp(r'\.ts$'),
+          '_$endHour-${endMin}_interrupted.ts',
+        );
         await entity.rename(newPath);
         Log.logPrint("标记中断文件: $name → ${newPath.split('/').last}");
       }
@@ -146,7 +155,8 @@ Future<void> _ensureForegroundNotificationChannel() async {
     final plugin = FlutterLocalNotificationsPlugin();
     await plugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
   } catch (e) {
     Log.logPrint("创建前台服务通知渠道失败: $e");
@@ -217,42 +227,59 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var settings = AppSettingsController.instance;
+    // 外观设置（动态取色 / 主题色 / 明暗）变化时整体重建主题
+    return Obx(() {
+      var settings = AppSettingsController.instance;
+      var useDynamic = settings.isDynamic.value;
+      var seed = Color(settings.styleColor.value);
 
-    return GetMaterialApp(
-      title: "Simple Recorder",
-      theme: AppStyle.lightTheme,
-      darkTheme: AppStyle.darkTheme,
-      themeMode: ThemeMode.values[settings.themeMode.value],
-      initialRoute: RoutePath.kIndex,
-      getPages: AppPages.routes,
-      locale: const Locale("zh", "CN"),
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale("zh", "CN")],
-      defaultTransition: Transition.cupertino,
-      navigatorObservers: [FlutterSmartDialog.observer],
-      builder: FlutterSmartDialog.init(
-        builder: (context, child) {
-          var mediaQuery = MediaQuery.of(context);
-          return MediaQuery(
-            data: mediaQuery.copyWith(
-              textScaler: const TextScaler.linear(1.0),
+      return DynamicColorBuilder(
+        builder: (lightDynamic, darkDynamic) {
+          return GetMaterialApp(
+            title: "Simple Recorder",
+            theme: AppStyle.buildTheme(
+              Brightness.light,
+              scheme: useDynamic ? lightDynamic : null,
+              seedColor: seed,
             ),
-            // 全局悬浮层：播放器 + 解包/合并任务，叠在所有路由页面之上
-            child: Stack(
-              children: [
-                child!,
-                const GlobalPlayerOverlay(),
-                const GlobalTaskOverlay(),
-              ],
+            darkTheme: AppStyle.buildTheme(
+              Brightness.dark,
+              scheme: useDynamic ? darkDynamic : null,
+              seedColor: seed,
+            ),
+            themeMode: ThemeMode.values[settings.themeMode.value],
+            initialRoute: RoutePath.kIndex,
+            getPages: AppPages.routes,
+            locale: const Locale("zh", "CN"),
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale("zh", "CN")],
+            defaultTransition: Transition.cupertino,
+            navigatorObservers: [FlutterSmartDialog.observer],
+            builder: FlutterSmartDialog.init(
+              builder: (context, child) {
+                var mediaQuery = MediaQuery.of(context);
+                return MediaQuery(
+                  data: mediaQuery.copyWith(
+                    textScaler: const TextScaler.linear(1.0),
+                  ),
+                  // 全局悬浮层：播放器 + 解包/合并任务，叠在所有路由页面之上
+                  child: Stack(
+                    children: [
+                      child!,
+                      const GlobalPlayerOverlay(),
+                      const GlobalTaskOverlay(),
+                    ],
+                  ),
+                );
+              },
             ),
           );
         },
-      ),
-    );
+      );
+    });
   }
 }
