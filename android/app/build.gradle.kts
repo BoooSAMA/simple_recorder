@@ -40,6 +40,15 @@ android {
         versionName = flutter.versionName
     }
 
+    packaging {
+        jniLibs {
+            // Release builds default to loading .so directly from the APK.
+            // Some FFmpegKit native libs fail JNI_OnLoad that way on certain devices,
+            // so keep the legacy behaviour (extract to lib dir on install).
+            useLegacyPackaging = true
+        }
+    }
+
     signingConfigs {
         create("release") {
             if (keystorePropertiesFile.exists()) {
