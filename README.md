@@ -396,6 +396,47 @@ flutter analyze
 
 > 注：前台服务保活、启动图标为 Android 专用能力，其他平台无对应功能。
 
+### 发布流程（Release 检查清单）
+
+> ⚠️ `flutter build` 成功、`flutter run` 正常，**都不代表 release 包可用**。release 与 debug 在代码混淆、manifest 合并、原生库打包上都有差异，每次发版必须在真机上跑一遍下面的验证链。
+
+1. **修改版本号**：`pubspec.yaml` 的 `version: x.y.z+build`
+
+2. **构建最小体积包**：
+
+   ```bash
+   flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
+   ```
+
+3. **真机最小验证链**（缺一不可）：
+
+   - [ ] 启动不崩溃，日志无 `Bad JNI version returned from JNI_OnLoad` / `No JNI instance` / `MissingPluginException`
+   - [ ] 首页直播状态检测完成，不停留在「检查中」
+   - [ ] 搜索能返回结果（验证 `INTERNET` 权限）
+   - [ ] 录制 → 停止 → 自动生成 M4A 且可播放
+   - [ ] TS 解包成功
+
+4. **存档符号文件**：`build/symbols/` 是混淆后的堆栈还原映射，发版后保留，可用 `flutter symbolize` 还原崩溃堆栈。
+
+5. **上传 Release**：
+
+   ```bash
+   gh release create vx.y.z \
+     build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+     build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+     --title "Simple Recorder vx.y.z" --notes-file notes.md
+   ```
+
+#### 已知 release 专属陷阱
+
+| 症状 | 根因 | 修复位置 |
+|---|---|---|
+| 启动闪退 / 所有插件失效，日志 `Bad JNI version returned from JNI_OnLoad: 0` | R8 混淆了 FFmpegKit 的 JNI 类，`JNI_OnLoad` 按硬编码类名注册失败 | `android/app/proguard-rules.pro` 的 keep 规则 |
+| 搜索报「发送 get 请求失败」、状态全停在「检查中」，本地播放正常 | `INTERNET` 权限只在 debug/profile manifest 声明 | `android/app/src/main/AndroidManifest.xml` |
+| 包体积比预期大 ~20 MB | 原生库未压缩存储 | `build.gradle.kts` 的 `useLegacyPackaging = true` |
+
+> 提示：`git tag -f vx.y.z` 可覆盖已发布 tag，但仅在无人下载时使用；否则应升版本号发新 release。
+
 ## 依赖的核心库
 
 - `simple_live_core` — 源自 [dart_simple_live](https://github.com/xiaoyaocz/dart_simple_live)，本地 path 依赖
